@@ -28,6 +28,7 @@
   "author": "himan",
   "license": "ISC",
   "dependencies": {
+    "@clerk/express": "^2.1.85",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
@@ -38,6 +39,7 @@
     "http-status-codes": "^2.3.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
+    "svix": "^2.9.1",
     "winston": "^3.18.3",
     "zod": "^4.1.11"
   },
