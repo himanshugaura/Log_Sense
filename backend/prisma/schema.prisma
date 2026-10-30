@@ -1,0 +1,325 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// AUTHENTICATION & OWNERSHIP
+// ==========================================
+
+model User {
+  id          String   @id @default(uuid())
+  clerkUserId String   @unique
+  name        String?
+  email       String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownedOrganizations Organization[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  ownerId   String
+  name      String
+  createdAt DateTime @default(now())
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects Project[]
+
+  @@index([ownerId])
+  @@map("organizations")
+}
+
+model Project {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?  @db.Text
+  timezone       String   @default("UTC")
+  createdAt      DateTime @default(now())
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  services       Service[]
+  logSources     LogSource[]
+  logEntries     LogEntry[]
+  parserStates   ParserState[]
+  processingJobs ProcessingJob[]
+  anomalies      Anomaly[]
+  incidents      Incident[]
+
+  @@index([organizationId])
+  @@map("projects")
+}
+
+// ==========================================
+// SERVICES
+// ==========================================
+
+model Service {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  project              Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outgoingDependencies ServiceDependency[]  @relation("SourceServiceDependencies")
+  incomingDependencies ServiceDependency[]  @relation("TargetServiceDependencies")
+  logSources           LogSource[]
+  logEntries           LogEntry[]
+  parserStates         ParserState[]
+  anomalies            Anomaly[]
+  rootCauseCandidates  RootCauseCandidate[]
+
+  @@index([projectId])
+  @@map("services")
+}
+
+model ServiceDependency {
+  id              String  @id @default(uuid())
+  sourceServiceId String
+  targetServiceId String
+  dependencyType  String
+  isRequired      Boolean @default(true)
+
+  sourceService Service @relation("SourceServiceDependencies", fields: [sourceServiceId], references: [id], onDelete: Cascade)
+  targetService Service @relation("TargetServiceDependencies", fields: [targetServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceServiceId, targetServiceId])
+  @@index([sourceServiceId])
+  @@index([targetServiceId])
+  @@map("service_dependencies")
+}
+
+// ==========================================
+// LOG INGESTION
+// ==========================================
+
+model LogSource {
+  id         String   @id @default(uuid())
+  projectId  String
+  serviceId  String
+  name       String
+  sourceType String
+  createdAt  DateTime @default(now())
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  service    Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  logEntries LogEntry[]
+
+  @@index([projectId])
+  @@index([serviceId])
+  @@map("log_sources")
+}
+
+model LogEntry {
+  id                String   @id @default(uuid())
+  projectId         String
+  serviceId         String
+  sourceId          String
+  clusterId         String?
+  timestamp         DateTime
+  level             String
+  rawMessage        String   @db.Text
+  normalizedMessage String?  @db.Text
+  traceId           String?
+  spanId            String?
+  metadata          Json?
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  service Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  source  LogSource   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  cluster LogCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, timestamp])
+  @@index([serviceId, timestamp])
+  @@index([clusterId])
+  @@index([level])
+  @@index([traceId])
+  @@map("log_entries")
+}
+
+// ==========================================
+// LOG PARSING & PROCESSING
+// ==========================================
+
+model ParserState {
+  id        String   @id @default(uuid())
+  projectId String
+  serviceId String
+  stateData String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  service     Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  logClusters LogCluster[]
+
+  @@index([projectId])
+  @@index([serviceId])
+  @@map("parser_states")
+}
+
+model LogCluster {
+  id              String   @id @default(uuid())
+  parserStateId   String
+  drainClusterId  Int
+  template        String   @db.Text
+  occurrenceCount Int      @default(1)
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+
+  parserState ParserState @relation(fields: [parserStateId], references: [id], onDelete: Cascade)
+  logEntries  LogEntry[]
+  anomalies   Anomaly[]
+
+  @@index([parserStateId])
+  @@index([drainClusterId])
+  @@map("log_clusters")
+}
+
+model ProcessingJob {
+  id             String    @id @default(uuid())
+  projectId      String
+  jobType        String
+  status         String
+  totalItems     Int       @default(0)
+  processedItems Int       @default(0)
+  errorMessage   String?   @db.Text
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+  @@map("processing_jobs")
+}
+
+// ==========================================
+// ANOMALIES & INCIDENTS
+// ==========================================
+
+model Anomaly {
+  id              String   @id @default(uuid())
+  projectId       String
+  serviceId       String
+  clusterId       String?
+  anomalyType     String
+  title           String
+  description     String?  @db.Text
+  severity        String
+  status          String
+  occurrenceCount Int      @default(1)
+  firstDetectedAt DateTime @default(now())
+  lastDetectedAt  DateTime @default(now())
+  evidence        Json?
+
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  service           Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  cluster           LogCluster?       @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+  incidentAnomalies IncidentAnomaly[]
+
+  @@index([projectId, status])
+  @@index([serviceId])
+  @@index([severity])
+  @@index([clusterId])
+  @@map("anomalies")
+}
+
+model Incident {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String?   @db.Text
+  severity    String
+  status      String
+  startedAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  incidentAnomalies IncidentAnomaly[]
+  rcaAnalyses       RcaAnalysis[]
+  incidentSummaries IncidentSummary[]
+
+  @@index([projectId, status])
+  @@index([severity])
+  @@map("incidents")
+}
+
+model IncidentAnomaly {
+  id         String   @id @default(uuid())
+  incidentId String
+  anomalyId  String
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  anomaly  Anomaly  @relation(fields: [anomalyId], references: [id], onDelete: Cascade)
+
+  @@unique([incidentId, anomalyId])
+  @@index([incidentId])
+  @@index([anomalyId])
+  @@map("incident_anomalies")
+}
+
+// ==========================================
+// ROOT CAUSE ANALYSIS (RCA)
+// ==========================================
+
+model RcaAnalysis {
+  id           String   @id @default(uuid())
+  incidentId   String
+  conclusion   String?  @db.Text
+  confidence   Float
+  analysisData Json?
+  createdAt    DateTime @default(now())
+
+  incident   Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  candidates RootCauseCandidate[]
+
+  @@index([incidentId])
+  @@map("rca_analyses")
+}
+
+model RootCauseCandidate {
+  id              String  @id @default(uuid())
+  analysisId      String
+  serviceId       String
+  totalScore      Float
+  temporalScore   Float
+  dependencyScore Float
+  errorTypeScore  Float
+  traceScore      Float
+  explanation     String? @db.Text
+  rank            Int
+
+  analysis RcaAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  service  Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId, rank])
+  @@index([serviceId])
+  @@map("root_cause_candidates")
+}
+
+// ==========================================
+// AI SUMMARY
+// ==========================================
+
+model IncidentSummary {
+  id              String   @id @default(uuid())
+  incidentId      String
+  summary         String   @db.Text
+  recommendations Json?
+  model           String
+  createdAt       DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@map("incident_summaries")
+}
