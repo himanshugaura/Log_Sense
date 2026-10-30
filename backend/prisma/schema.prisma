@@ -78,6 +78,7 @@ model Service {
   anomalies            Anomaly[]
   rootCauseCandidates  RootCauseCandidate[]
 
+  @@unique([projectId, name])
   @@index([projectId])
   @@map("services")
 }
