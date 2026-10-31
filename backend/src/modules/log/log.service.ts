@@ -64,39 +64,37 @@ export class LogService {
       contentType: params.file.mimetype || "text/plain",
     });
 
-    // 3. Atomically reset previous runs (single log per project) and create LogSource & ProcessingJob in PostgreSQL
-    const { logSource, processingJob } = await prisma.$transaction(async (tx) => {
-      // Clear any prior log telemetry for this project to ensure 1:1 service-to-log isolation
-      await tx.incidentSummary.deleteMany({ where: { incident: { projectId: params.projectId } } });
-      await tx.incident.deleteMany({ where: { projectId: params.projectId } });
-      await tx.anomaly.deleteMany({ where: { projectId: params.projectId } });
-      await tx.logEntry.deleteMany({ where: { projectId: params.projectId } });
-      await tx.parserState.deleteMany({ where: { projectId: params.projectId } });
-      await tx.logSource.deleteMany({ where: { projectId: params.projectId } });
-      await tx.processingJob.deleteMany({ where: { projectId: params.projectId } });
+    // 3. Reset previous log telemetry for this project to ensure 1:1 service-to-log isolation
+    try {
+      await prisma.incident.deleteMany({ where: { projectId: params.projectId } });
+      await prisma.anomaly.deleteMany({ where: { projectId: params.projectId } });
+      await prisma.parserState.deleteMany({ where: { projectId: params.projectId } });
+      await prisma.processingJob.deleteMany({ where: { projectId: params.projectId } });
+      await prisma.logSource.deleteMany({ where: { projectId: params.projectId } });
+    } catch (err: any) {
+      logger.warn(`Notice during cleanup of previous project telemetry: ${err?.message}`);
+    }
 
-      const source = await tx.logSource.create({
-        data: {
-          projectId: params.projectId,
-          serviceName: params.serviceName || project.name,
-          name: params.file.originalname,
-          sourceType: params.sourceType || "FILE_UPLOAD",
-          fileKey: uploadResult.key,
-          fileSize: params.file.size,
-          fileType: params.file.mimetype || "text/plain",
-        },
-      });
+    // 4. Create fresh LogSource and ProcessingJob
+    const logSource = await prisma.logSource.create({
+      data: {
+        projectId: params.projectId,
+        serviceName: params.serviceName || project.name,
+        name: params.file.originalname,
+        sourceType: params.sourceType || "FILE_UPLOAD",
+        fileKey: uploadResult.key,
+        fileSize: params.file.size,
+        fileType: params.file.mimetype || "text/plain",
+      },
+    });
 
-      const job = await tx.processingJob.create({
-        data: {
-          projectId: params.projectId,
-          logSourceId: source.id,
-          jobType: "LOG_INGESTION",
-          status: "PENDING",
-        },
-      });
-
-      return { logSource: source, processingJob: job };
+    const processingJob = await prisma.processingJob.create({
+      data: {
+        projectId: params.projectId,
+        logSourceId: logSource.id,
+        jobType: "LOG_INGESTION",
+        status: "PENDING",
+      },
     });
 
     // 4. Trigger asynchronous processing via Python FastAPI service
