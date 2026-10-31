@@ -13,6 +13,7 @@ import {
   Boxes,
   ArrowLeft,
   Activity,
+  Zap,
 } from "lucide-react";
 import { useEffect } from "react";
 
@@ -51,22 +52,28 @@ export default function ProjectWorkspaceLayout({
 
   const navItems = [
     {
-      name: "Services",
-      href: `/projects/${projectId}/services`,
-      icon: Cpu,
-      description: "Microservices & Dependency Graph",
-    },
-    {
       name: "Overview",
       href: `/projects/${projectId}`,
       icon: Activity,
       description: "System Health & Live Metrics",
     },
     {
+      name: "Services",
+      href: `/projects/${projectId}/services`,
+      icon: Cpu,
+      description: "Microservices & Dependency Graph",
+    },
+    {
       name: "Incidents",
       href: `/projects/${projectId}/incidents`,
       icon: AlertTriangle,
       description: "AI RCA & Triage Feed",
+    },
+    {
+      name: "Anomalies",
+      href: `/projects/${projectId}/anomalies`,
+      icon: Zap,
+      description: "Spike Outliers & Patterns",
     },
     {
       name: "Log Explorer",
