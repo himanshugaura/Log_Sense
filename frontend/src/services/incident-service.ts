@@ -37,6 +37,12 @@ export const incidentService = {
           const candidates = item.rcaAnalyses?.[0]?.candidates || [];
           const topCandidate = candidates[0];
           const summary = item.incidentSummaries?.[0];
+          const rawRecs = summary?.recommendations;
+          let structuredReport: any = undefined;
+
+          if (rawRecs && typeof rawRecs === 'object' && ('whatHappened' in rawRecs || 'metrics' in rawRecs)) {
+            structuredReport = rawRecs;
+          }
 
           return {
             id: item.id,
@@ -54,6 +60,7 @@ export const incidentService = {
               summary?.summary ||
               summary?.summaryText ||
               'Point-based log pattern RCA in progress.',
+            structuredReport,
             rootCauseCandidates: candidates.map((c: any) => ({
               clusterId: c.clusterId || c.cluster?.id,
               template: c.template || c.cluster?.template || 'Unknown Pattern',
@@ -98,6 +105,12 @@ export const incidentService = {
         const candidates = item.rcaAnalyses?.[0]?.candidates || [];
         const topCandidate = candidates[0];
         const summary = item.incidentSummaries?.[0];
+        const rawRecs = summary?.recommendations;
+        let structuredReport: any = undefined;
+
+        if (rawRecs && typeof rawRecs === 'object' && ('whatHappened' in rawRecs || 'metrics' in rawRecs)) {
+          structuredReport = rawRecs;
+        }
 
         return {
           id: item.id,
@@ -115,6 +128,7 @@ export const incidentService = {
             summary?.summary ||
             summary?.summaryText ||
             'Point-based log pattern RCA in progress.',
+          structuredReport,
           rootCauseCandidates: candidates.map((c: any) => ({
             clusterId: c.clusterId || c.cluster?.id,
             template: c.template || c.cluster?.template || 'Unknown Pattern',

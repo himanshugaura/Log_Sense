@@ -148,6 +148,25 @@ export interface CorrelatedTimelineEvent {
   evidenceRef?: string;
 }
 
+export interface StructuredIncidentReport {
+  whatHappened?: string;
+  potentialImpact?: string;
+  rootCauseExplanation?: string;
+  rcaBullets?: string[];
+  unfamiliarPatterns?: Array<{
+    pattern: string;
+    component: string;
+    explanation: string;
+  }>;
+  investigationRecommendations?: string[];
+  metrics?: {
+    affectedPatterns?: number;
+    detectionWindow?: string;
+    totalMatchingErrors?: number;
+    candidateCount?: number;
+  };
+}
+
 export interface Incident {
   id: string;
   title: string;
@@ -159,6 +178,7 @@ export interface Incident {
   firstDetected: string;
   lastUpdated: string;
   aiSummary: string;
+  structuredReport?: StructuredIncidentReport;
   rootCauseCandidates: RootCauseCandidate[];
   correlatedTimeline: CorrelatedTimelineEvent[];
   evidenceLogs?: any[];
