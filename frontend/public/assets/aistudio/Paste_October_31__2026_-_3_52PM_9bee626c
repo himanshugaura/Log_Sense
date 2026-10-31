@@ -1,0 +1,1084 @@
+# LOGSENSE — COMPLETE FRONTEND DEVELOPMENT
+## Project Era UI/UX Reference | React + TypeScript + Tailwind CSS
+
+Act as a senior frontend engineer, product designer, and SaaS UI/UX architect.
+
+Build a complete, professional, responsive frontend for **LogSense: AI-Powered Incident Triage for Cloud Applications**.
+
+This is a real hackathon product frontend, not just a landing page or static dashboard mockup.
+
+You must implement the complete frontend inside the existing project with clean architecture, functional interactions, realistic sample data, and clearly defined integration points for a future backend.
+
+---
+
+# 1. FINAL DESIGN REFERENCE — MUST FOLLOW
+
+**Reference website:**
+
+https://project-era-1.vercel.app/
+
+This is the ONLY approved UI/UX reference.
+
+I want LogSense to follow the same visual design language as Project Era as closely as possible.
+
+Before implementation, open the reference website and inspect its actual rendered appearance.
+
+Study:
+
+- Background colors and background treatment.
+- Primary, secondary, and muted text colors.
+- Font family and typography style.
+- Heading sizes and font weights.
+- Navbar appearance and spacing.
+- Button design and border treatment.
+- Section spacing and layout proportions.
+- Content width and alignment.
+- Card and surface styling.
+- Footer design.
+- Mobile and tablet layouts.
+
+### Exact visual requirements
+
+- Reproduce the same background appearance.
+- Match the same text color palette.
+- Match the same font style and typography hierarchy.
+- Match heading proportions and paragraph styling.
+- Match section spacing, alignment, and visual balance.
+- Match navbar and button styling.
+- Keep the interface clean, minimal, and professional.
+
+Do not merely take inspiration from Project Era. Recreate its actual visual design language as closely as reasonably possible.
+
+Do not copy its content, brand identity, or unrelated product sections. Use LogSense branding and content.
+
+If source code is inaccessible, inspect the rendered website and recreate its appearance from visual evidence. Do not claim exact source-level matching without access.
+
+**Do not use Landa, Teal Treasury, 21st.dev, or any other design reference.**
+
+---
+
+# 2. PRODUCT IDENTITY AND PROBLEM STATEMENT
+
+**Product:** LogSense
+
+**Tagline:** Find the Real Error. Trace the Service. Resolve the Incident.
+
+**Product category:** AI | DevOps | Cloud (AIOps)
+
+### Product description
+
+LogSense is an AI-powered incident triage platform for cloud applications.
+
+It helps engineers find the real error and the responsible service hidden inside millions of application log lines.
+
+### Background
+
+Every running application generates timestamped logs describing what the system is doing.
+
+Production systems can generate millions of log lines. When something breaks, engineers must investigate large volumes of noisy logs to identify the actual error and determine which service caused the problem.
+
+### Problem
+
+Engineers spend too much time finding meaningful errors in log noise and identifying the service responsible for an incident.
+
+### Solution
+
+LogSense helps engineers:
+
+1. Parse raw application logs.
+2. Convert log lines into reusable templates.
+3. Cluster similar log messages.
+4. Detect unusual behavior and error-rate spikes.
+5. Build an incident timeline.
+6. Identify affected services.
+7. Generate concise AI-assisted incident summaries.
+8. Present evidence-backed root-cause hypotheses.
+
+### Target users
+
+- On-call engineers.
+- DevOps and Site Reliability Engineering teams.
+- Developers investigating application failures.
+
+Keep this product purpose clear throughout the interface.
+
+---
+
+# 3. TECHNOLOGY STACK
+
+Use the following frontend stack:
+
+- React
+- TypeScript
+- HTML5 through React JSX/TSX
+- Tailwind CSS
+- JavaScript/TypeScript
+- React Router
+- Lucide React icons
+- Recharts for charts
+- React Flow (`@xyflow/react`) for service dependency visualization, if required.
+
+Use the existing package manager and project configuration.
+
+Do not add unnecessary libraries.
+
+Use reusable React components and strongly typed TypeScript interfaces.
+
+The frontend must be maintainable and easy to connect to a Python or Node.js backend later.
+
+---
+
+# 4. WEBSITE NAVBAR — EXACT STRUCTURE
+
+Create a premium navbar following Project Era's design.
+
+Required navigation items, in this exact order:
+
+**Home | Features | How It Works | Dashboard | FAQ**
+
+Additional elements:
+
+- LogSense logo and branding.
+- Sign In.
+- Get Started CTA.
+- Dark/light theme toggle.
+
+### Navigation behavior
+
+- Home → Landing page hero.
+- Features → Features section.
+- How It Works → Workflow section.
+- Dashboard → Actual dashboard route.
+- FAQ → FAQ section.
+
+Use smooth section scrolling where appropriate.
+
+### Responsive navbar
+
+Desktop:
+- Clean horizontal layout.
+- Proper spacing and alignment.
+- Consistent typography.
+- Refined hover and active states.
+
+Mobile:
+- LogSense branding.
+- Functional hamburger menu.
+- Expandable navigation drawer/dropdown.
+- All five navigation items.
+- Accessible Sign In and Get Started actions.
+- Menu closes after navigation.
+- Proper touch targets.
+- No horizontal overflow.
+
+Do not overcrowd the navbar.
+
+---
+
+# 5. LANDING PAGE
+
+Build a complete landing page with concise content and meaningful product visuals.
+
+## A. Hero — Home
+
+Main heading:
+
+**LogSense: AI-Powered Incident Triage for Cloud Applications**
+
+Supporting headline:
+
+**Find the Real Error. Trace the Service. Resolve the Incident.**
+
+Description:
+
+"Turn millions of application log lines into structured patterns, anomaly insights, and evidence-backed incident summaries."
+
+Primary CTA:
+- Explore Dashboard
+
+Secondary CTA:
+- See How It Works
+
+Show a meaningful LogSense product preview or actual dashboard preview.
+
+Keep the hero visually close to Project Era.
+
+Do not add unnecessary paragraphs, fake statistics, or generic AI illustrations.
+
+## B. Features
+
+Create six compact feature sections/cards:
+
+**1. Log Parsing & Clustering**
+Convert raw log messages into structured templates and group similar events.
+
+**2. Anomaly Detection**
+Identify unusual error patterns, sudden error-rate spikes, and new log types.
+
+**3. Incident Timeline**
+Visualize when anomalies occur and how incidents evolve.
+
+**4. AI Incident Summary**
+Generate short explanations of detected incidents in plain language.
+
+**5. Root Cause Analysis**
+Identify likely responsible services using supporting evidence.
+
+**6. Service Dependency Mapping**
+Understand service relationships and possible incident blast radius.
+
+Use short descriptions and meaningful icons.
+
+Avoid excessive text.
+
+## C. How It Works
+
+Show the actual product workflow:
+
+1. Upload Public Log Dataset.
+2. Parse Logs into Templates.
+3. Cluster Similar Messages.
+4. Detect Anomalies.
+5. Correlate Affected Services.
+6. Generate Incident Summary.
+
+Use a clean visual workflow with concise labels.
+
+## D. Dashboard Preview
+
+Show a realistic preview of the LogSense dashboard.
+
+Use actual reusable frontend components where possible rather than a static screenshot.
+
+Include:
+- Log event metrics.
+- Error distribution.
+- Recent incidents.
+- Anomaly timeline.
+- Service health.
+
+Add a CTA that opens the dashboard.
+
+## E. FAQ
+
+Create a minimal, functional accordion.
+
+Questions:
+
+- What is LogSense?
+- How does log parsing work?
+- What is Drain3?
+- How does anomaly detection work?
+- How does LogSense identify the responsible service?
+- What evidence is shown in incident summaries?
+- Which datasets can be used?
+- Can I connect my own backend?
+
+Keep answers short and technically accurate.
+
+## F. Footer
+
+Follow Project Era's footer visual style.
+
+Include:
+- LogSense branding.
+- Short product description.
+- Home.
+- Features.
+- How It Works.
+- Dashboard.
+- FAQ.
+- Copyright.
+
+Do not add unnecessary footer content.
+
+---
+
+# 6. COMPLETE APPLICATION DASHBOARD
+
+This is the most important part of the implementation.
+
+Build a genuine observability and incident investigation dashboard.
+
+Do not create a generic admin dashboard.
+
+The dashboard must use the same Project Era visual language:
+
+- Same background style.
+- Same text color palette.
+- Same typography.
+- Same spacing principles.
+- Same border treatment.
+- Same visual hierarchy.
+
+### Application layout
+
+Create:
+
+- Responsive sidebar.
+- Top navigation.
+- Main content area.
+- Breadcrumbs where useful.
+- Theme toggle.
+- Page titles.
+- User-friendly navigation.
+- Mobile sidebar drawer.
+
+Required dashboard navigation:
+
+1. Overview
+2. Log Explorer
+3. Log Clusters
+4. Anomalies
+5. Incidents
+6. Service Map
+
+Keep the sidebar clean and compact.
+
+---
+
+# 7. DASHBOARD OVERVIEW
+
+Create a professional overview page.
+
+### Metric cards
+
+- Total Log Events
+- Error Events
+- Detected Anomalies
+- Active Incidents
+- Monitored Services
+
+### Main visualizations
+
+**Log Activity Chart**
+- Log volume over time.
+- Error and warning distribution.
+- Clear timeline labels.
+
+**Anomaly Timeline**
+- Error-rate spikes.
+- New error types.
+- Detected anomaly markers.
+
+**Incident Severity**
+- Critical.
+- High.
+- Medium.
+- Low.
+
+**Recent Incidents**
+- Incident title.
+- Severity.
+- Affected service.
+- Detection time.
+- Status.
+
+**Service Health**
+- Service name.
+- Health status.
+- Error count.
+- Dependency information.
+
+Use meaningful sample data and proper empty states.
+
+Do not fabricate real production or live monitoring claims.
+
+---
+
+# 8. LOG EXPLORER — CORE MVP FEATURE
+
+Create a functional log exploration interface.
+
+Required:
+
+- Public dataset selection.
+- Log file upload interface.
+- Search log messages.
+- Filter by severity.
+- Filter by service.
+- Filter by time range.
+- Timestamp.
+- Service name.
+- Log level.
+- Log message.
+- Expandable log details.
+- Error highlighting.
+- Pagination or virtualization for larger sample datasets.
+
+### Log upload workflow
+
+Create a user-friendly upload panel supporting appropriate public log files such as `.log`, `.txt`, and `.csv`.
+
+Include:
+
+1. Drag and drop.
+2. File selection.
+3. File validation.
+4. File details.
+5. Upload state.
+6. Processing state.
+7. Error state.
+8. Completion state.
+
+Since this is frontend-only, use a local sample processing simulation only when necessary and clearly identify it as a frontend preview.
+
+Never claim the backend has parsed a file when it has not.
+
+---
+
+# 9. LOG PARSING & CLUSTERING
+
+Create a dedicated Log Clusters page.
+
+The purpose is to demonstrate how raw logs are converted into reusable templates and grouped by similar patterns.
+
+### Example
+
+Raw logs:
+
+```text
+2026-10-31 10:12:01 ERROR User 1042 failed to connect to database 10.0.0.5
+2026-10-31 10:12:04 ERROR User 2051 failed to connect to database 10.0.0.8
+2026-10-31 10:12:08 ERROR User 3098 failed to connect to database 10.0.0.9
+```
+
+Parsed template:
+
+```text
+ERROR User <*> failed to connect to database <*>
+```
+
+### Cluster table
+
+Include:
+
+- Cluster ID.
+- Log template.
+- Occurrence count.
+- Severity.
+- Related service.
+- First seen.
+- Last seen.
+
+### Interactions
+
+- Search templates.
+- Filter by service.
+- Filter by severity.
+- Sort by occurrence count.
+- Expand a cluster.
+- Show sample raw log messages.
+- Highlight wildcard parameters such as `<*>`.
+
+Clearly label sample data.
+
+The actual Drain3 parsing algorithm will be connected to the backend later.
+
+---
+
+# 10. ANOMALY DETECTION & TIMELINE
+
+Create a dedicated Anomalies page.
+
+This is a core MVP requirement.
+
+Show:
+
+- Error-rate spikes.
+- Sudden increases in log volume.
+- New/unseen log templates.
+- Unusual service behavior.
+- Time of anomaly detection.
+- Affected service.
+- Severity.
+- Related cluster.
+
+### Timeline visualization
+
+Build an interactive timeline using Recharts or a suitable chart component.
+
+Include:
+
+- Time on the X-axis.
+- Error count/rate on the Y-axis.
+- Normal activity.
+- Anomaly markers.
+- Selected anomaly details.
+
+### Anomaly detail panel
+
+On selecting an anomaly, show:
+
+- Detection time.
+- Anomaly type.
+- Related service.
+- Related log cluster.
+- Observed value.
+- Expected baseline.
+- Supporting log samples.
+- Related incident, if available.
+
+Make the evidence accessible directly from the anomaly.
+
+---
+
+# 11. INCIDENT MANAGEMENT & TRIAGE
+
+Create a complete Incidents page.
+
+### Incident list
+
+Include:
+
+- Incident ID.
+- Incident title.
+- Severity.
+- Status.
+- Suspected root-cause service.
+- Affected services.
+- First detected.
+- Last updated.
+
+Filters:
+
+- Severity.
+- Status.
+- Service.
+- Date range.
+
+### Incident details page
+
+Create a detailed incident investigation screen.
+
+Include:
+
+**A. Incident Header**
+- Incident title.
+- Incident ID.
+- Severity.
+- Current status.
+- Detection time.
+- Affected services.
+
+**B. AI Incident Summary**
+
+Show a concise natural-language explanation.
+
+Example:
+
+"Database connection failures increased sharply in database-service. This was followed by request timeouts in payment-service and HTTP 504 errors in order-service."
+
+**C. Root Cause Candidates**
+
+Show ranked hypotheses.
+
+For each candidate:
+- Service name.
+- Confidence score, if provided by the analysis engine.
+- Supporting evidence.
+- Related anomalies.
+- Related log clusters.
+
+Do not present a confidence score as a statistically calibrated probability unless the backend actually provides that meaning.
+
+**D. Correlated Incident Timeline**
+
+Show the order in which the events occurred.
+
+**E. Evidence Panel**
+
+Show:
+- Timestamp.
+- Service.
+- Log level.
+- Raw log message.
+- Related template or cluster.
+- Related anomaly.
+
+**F. Investigation Checklist**
+
+Allow frontend users to interact with checklist items.
+
+**G. Incident Status**
+
+Support frontend status transitions:
+
+`OPEN → INVESTIGATING → RESOLVED`
+
+Clearly distinguish local demo state from backend-persisted state.
+
+---
+
+# 12. SERVICE MAP & ROOT-CAUSE VISUALIZATION
+
+Build an interactive service dependency graph.
+
+Use `@xyflow/react` if appropriate.
+
+Example service cascade:
+
+`database-service → payment-service → order-service`
+
+Example incident:
+
+- database-service: connection pool exhaustion.
+- payment-service: request timeouts.
+- order-service: HTTP 504 responses.
+
+Show:
+
+- Service nodes.
+- Service names.
+- Health indicators.
+- Dependency arrows.
+- HTTP / DATABASE relationship labels.
+- Affected service highlighting.
+- Node selection.
+- Zoom and pan.
+- Blast-radius visualization.
+- Selected service detail panel.
+
+When a user selects a node, display its related logs, anomalies, and incidents where sample data supports those relationships.
+
+Do not present an inferred dependency as a verified relationship unless the data supports it.
+
+---
+
+# 13. PUBLIC DATASET SUPPORT
+
+The project must demonstrate its public-data-first approach.
+
+Suggested datasets:
+
+- LogHub HDFS.
+- LogHub BGL.
+- LogHub OpenStack.
+
+Create a dataset selection interface.
+
+Display:
+
+- Dataset name.
+- Description.
+- Source.
+- Format.
+- Sample size where known.
+- Select dataset action.
+
+Provide links to official/public dataset sources when available.
+
+Important:
+
+- Use public datasets only.
+- Do not request real production logs.
+- Do not embed large datasets into frontend source code.
+- Use small, clearly identified sample fixtures for the UI.
+- Keep dataset ingestion and parsing behind a future backend interface.
+
+---
+
+# 14. EVIDENCE-FIRST DESIGN
+
+This is an important product requirement.
+
+Every incident summary and root-cause hypothesis must be traceable to supporting evidence.
+
+Do not create an AI chatbot interface as the main product.
+
+Instead, show structured evidence:
+
+- Related log entries.
+- Parsed templates.
+- Cluster occurrence changes.
+- Anomaly time.
+- Affected services.
+- Service dependency path.
+- Timeline of correlated events.
+
+Each hypothesis should explain:
+
+1. What may have happened?
+2. Which service is suspected?
+3. What evidence supports the hypothesis?
+4. Which other services were affected?
+5. What should the engineer investigate next?
+
+Never make unsupported root-cause claims.
+
+---
+
+# 15. BONUS FEATURES — FRONTEND PREPARATION
+
+Prepare frontend UI sections for optional hackathon bonus features:
+
+### Live Demo
+- Microservice health overview.
+- Incoming event visualization.
+- Incident activity.
+- Live/demo indicator only when genuinely connected.
+
+### Alerts
+- Slack notification settings.
+- Discord notification settings.
+- Alert severity configuration.
+
+### Similar Past Incidents
+- Similarity results.
+- Previous incident summary.
+- Matching services.
+- Related log templates.
+
+These can be marked as future integration features if not implemented.
+
+Do not create fake integrations.
+
+---
+
+# 16. DARK MODE AND LIGHT MODE
+
+Implement a complete, functional centralized theme system.
+
+Both themes must follow the Project Era design language.
+
+Requirements:
+
+- Working theme toggle.
+- Entire application changes theme.
+- Consistent background colors.
+- Consistent text colors.
+- Correct contrast.
+- Themed charts and graph nodes.
+- Themed tables, inputs, menus, and modals.
+- Persist preference in localStorage.
+- Respect system preference on first visit.
+- Avoid incorrect theme flash.
+- Maintain theme across all routes.
+
+Test both modes on desktop and mobile.
+
+---
+
+# 17. FRONTEND ARCHITECTURE — BACKEND READY
+
+The project must have a clean and scalable frontend architecture.
+
+Use this suggested structure and adapt it to the existing repository:
+
+```text
+logsense/
+├── public/
+│   ├── assets/
+│   └── favicon.svg
+├── src/
+│   ├── app/
+│   │   ├── App.tsx
+│   │   ├── router.tsx
+│   │   └── providers/
+│   ├── components/
+│   │   ├── ui/
+│   │   ├── layout/
+│   │   ├── charts/
+│   │   └── shared/
+│   ├── features/
+│   │   ├── overview/
+│   │   ├── log-explorer/
+│   │   ├── log-clusters/
+│   │   ├── anomalies/
+│   │   ├── incidents/
+│   │   ├── service-map/
+│   │   ├── datasets/
+│   │   └── settings/
+│   ├── pages/
+│   │   ├── landing/
+│   │   ├── auth/
+│   │   └── dashboard/
+│   ├── services/
+│   │   ├── api/
+│   │   ├── log-service.ts
+│   │   ├── incident-service.ts
+│   │   └── anomaly-service.ts
+│   ├── hooks/
+│   ├── context/
+│   ├── types/
+│   ├── mocks/
+│   ├── lib/
+│   ├── constants/
+│   └── styles/
+├── .env.example
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+### Architecture rules
+
+- Use TypeScript interfaces for logs, clusters, anomalies, incidents, services, and datasets.
+- Keep reusable UI components separate from feature logic.
+- Keep data access separate from presentation.
+- Use service functions as the single data access layer.
+- Keep sample data in `mocks/`, never scattered throughout components.
+- Keep routing centralized.
+- Keep theme management centralized.
+- Use environment variables for future backend configuration.
+- Avoid hardcoding backend URLs in components.
+- Keep API response types separate from UI component props.
+- Handle loading, error, empty, and success states.
+
+### Future integration boundary
+
+Create a frontend-only API client abstraction and typed service interfaces.
+
+Example future configuration:
+
+```env
+VITE_API_BASE_URL=
+```
+
+The frontend may define functions such as:
+
+```ts
+getLogs()
+getLogClusters()
+getAnomalies()
+getIncidents()
+getIncidentById(id)
+getServices()
+getDatasets()
+```
+
+These are frontend service interfaces only.
+
+Do not invent or assume actual backend endpoint paths. Keep endpoint mapping configurable until the existing backend contract is inspected.
+
+---
+
+# 18. STRICT FRONTEND-ONLY RULES
+
+I will connect my existing backend separately.
+
+Do not create:
+
+- Python backend.
+- Node.js backend.
+- Express server.
+- FastAPI server.
+- API routes.
+- Database.
+- Database schemas.
+- Database migrations.
+- Prisma or Drizzle setup.
+- Neon or Firebase setup.
+- Supabase setup.
+- Gemini or OpenAI API implementation.
+- New authentication backend.
+- Duplicate server-side logic.
+
+Do not create `backend/`, `server/`, `database/`, or server-side `api/` folders.
+
+The `services/api/` directory described above is exclusively frontend code for future API communication. It must not contain a server.
+
+Do not modify or recreate my existing backend.
+
+---
+
+# 19. REALISTIC FRONTEND DEMO BEHAVIOR
+
+The frontend must be interactive and demonstrable without a connected backend.
+
+Use small, clearly identified sample fixtures to demonstrate:
+
+- Log search.
+- Log filtering.
+- Cluster expansion.
+- Anomaly selection.
+- Timeline interaction.
+- Incident details.
+- Evidence navigation.
+- Service graph interaction.
+- Incident status changes in local demo state.
+- Dataset selection.
+- Theme switching.
+
+Keep all mock data in one dedicated directory.
+
+Clearly distinguish:
+
+- Sample/demo data.
+- Locally changed UI state.
+- Real backend data.
+
+Do not label simulated processing as actual Drain3 execution or real AI analysis.
+
+Do not fabricate successful file uploads, authentication, alerts, or backend persistence.
+
+The goal is a fully working frontend demo with a clean path to real backend integration.
+
+---
+
+# 20. MOBILE RESPONSIVENESS
+
+The entire website and application must be responsive at:
+
+- 320px
+- 360px
+- 375px
+- 390px
+- 414px
+- 430px
+- 768px
+- 1024px
+- 1280px
+- 1440px+
+
+Requirements:
+
+- Responsive landing page.
+- Functional mobile navbar.
+- Collapsible dashboard sidebar.
+- Responsive charts.
+- Mobile-friendly tables.
+- Usable log explorer.
+- Usable incident detail panels.
+- Service Map adapted for small screens.
+- Proper touch targets.
+- No horizontal overflow.
+- Correct text wrapping.
+- Appropriate mobile spacing.
+
+Do not simply scale down desktop layouts.
+
+---
+
+# 21. IMPLEMENTATION ORDER
+
+Follow this sequence.
+
+**Phase 1 — Audit**
+- Inspect existing project.
+- Understand framework and dependencies.
+- Check existing routes and components.
+- Identify reusable assets.
+- Identify unnecessary files.
+
+**Phase 2 — Design system**
+- Inspect Project Era.
+- Reproduce its visual styling.
+- Create shared design tokens.
+- Implement dark/light themes.
+- Build responsive navbar and layout.
+
+**Phase 3 — Landing page**
+- Home.
+- Features.
+- How It Works.
+- Dashboard preview.
+- FAQ.
+- Footer.
+
+**Phase 4 — Dashboard**
+- Overview.
+- Log Explorer.
+- Log Clusters.
+- Anomalies.
+- Incidents.
+- Incident details.
+- Service Map.
+
+**Phase 5 — Data and interactions**
+- TypeScript interfaces.
+- Centralized mock data.
+- Frontend services.
+- Search and filters.
+- Graph interactions.
+- Timeline interactions.
+- Evidence navigation.
+
+**Phase 6 — Responsive testing**
+- Test desktop.
+- Test tablet.
+- Test mobile.
+- Test dark mode.
+- Test light mode.
+
+**Phase 7 — Cleanup**
+- Remove unused code safely.
+- Fix imports.
+- Remove dead components.
+- Run production build.
+- Resolve implementation errors.
+
+---
+
+# 22. FINAL ACCEPTANCE CHECKLIST
+
+The project is complete only when:
+
+- [ ] Project Era visual style is closely reproduced.
+- [ ] Same background and text color character.
+- [ ] Same typography style and hierarchy.
+- [ ] Navbar has exactly Home, Features, How It Works, Dashboard, FAQ.
+- [ ] Landing page content is concise.
+- [ ] Features section works.
+- [ ] How It Works section is complete.
+- [ ] Dashboard preview works.
+- [ ] FAQ accordion works.
+- [ ] Dashboard overview is implemented.
+- [ ] Log Explorer is implemented.
+- [ ] Log Clusters are implemented.
+- [ ] Anomaly timeline is implemented.
+- [ ] Incident management is implemented.
+- [ ] Incident details and evidence are implemented.
+- [ ] Service Map is interactive.
+- [ ] Public dataset selection is available.
+- [ ] Sample log data is clearly labeled.
+- [ ] Root-cause hypotheses show supporting evidence.
+- [ ] Dark mode works.
+- [ ] Light mode works.
+- [ ] Mobile navbar works.
+- [ ] Dashboard is mobile responsive.
+- [ ] No horizontal overflow.
+- [ ] All visible frontend controls work.
+- [ ] TypeScript has no relevant errors.
+- [ ] Production build passes.
+- [ ] No backend or database was created.
+- [ ] Frontend architecture is ready for backend integration.
+
+---
+
+# 23. FINAL DELIVERY REPORT
+
+After implementation, report:
+
+1. Pages implemented.
+2. Components implemented.
+3. Design system and reference matching.
+4. Dashboard functionality.
+5. Sample data and demo behavior.
+6. Frontend service architecture.
+7. Dark/light mode testing.
+8. Mobile responsiveness testing.
+9. Build and TypeScript results.
+10. Features waiting for backend integration.
+
+# FINAL INSTRUCTION
+
+Build the complete actual LogSense frontend inside the existing project.
+
+Do not deliver only a landing page, mockup, screenshot, or design proposal.
+
+The result must be a professional hackathon-ready frontend that demonstrates the complete LogSense MVP workflow:
+
+**Public Logs → Log Parsing → Template Clustering → Anomaly Detection → Incident Timeline → AI Incident Summary → Evidence-Based Root Cause Analysis → Service Mapping.**
+
+Use React, TypeScript, Tailwind CSS, and a clean component-based architecture.
+
+Follow Project Era's actual visual design as closely as possible.
+
+Keep text minimal, information meaningful, interactions functional, and the entire application responsive.
+
+Make the code easy to understand and easy to connect to an existing backend later.
+
+Do not create a new backend, database, or AI service.
+
+Implement, test, and deliver the working frontend.

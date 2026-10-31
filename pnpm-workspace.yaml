@@ -8,3 +8,6 @@ allowBuilds:
   '@clerk/shared': true
   esbuild: true
   prisma: true
+  unrs-resolver: true
+  '@google/genai': true
+  protobufjs: true

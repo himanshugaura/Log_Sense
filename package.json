@@ -4,8 +4,12 @@
   "private": true,
   "description": "LogSense — AI-Powered Incident Triage for Cloud Applications",
   "scripts": {
-    "dev:backend": "pnpm --filter backend dev",
+    "dev": "pnpm --filter frontend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter my-app dev",
     "dev:processing": "cd backend/processing && .venv/Scripts/python -m uvicorn main:app --reload --port 8000",
-    "build:backend": "pnpm --filter backend build"
+    "build": "pnpm --filter frontend build",
+    "build:frontend": "pnpm --filter frontend build",
+    "build:backend": "pnpm --filter my-app build"
   }
 }

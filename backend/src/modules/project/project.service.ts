@@ -68,7 +68,7 @@ export class ProjectService {
       await this.validateOrganizationOwnership(organizationId, userId);
     }
 
-    const projects = await prisma.project.findMany({
+    let projects = await prisma.project.findMany({
       where: {
         organization: {
           ownerId: userId,
@@ -96,6 +96,48 @@ export class ProjectService {
         createdAt: "desc",
       },
     });
+
+    if (projects.length === 0 && !organizationId) {
+      let org = await prisma.organization.findFirst({
+        where: { ownerId: userId },
+      });
+      if (!org) {
+        org = await prisma.organization.create({
+          data: {
+            name: "Default Organization",
+            ownerId: userId,
+          },
+        });
+      }
+
+      const defaultProject = await prisma.project.create({
+        data: {
+          organizationId: org.id,
+          name: "Default Production",
+          description: "Default microservices project workspace",
+          timezone: "UTC",
+        },
+        include: {
+          organization: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          _count: {
+            select: {
+              services: true,
+              logSources: true,
+              logEntries: true,
+              anomalies: true,
+              incidents: true,
+            },
+          },
+        },
+      });
+
+      projects = [defaultProject];
+    }
 
     return projects;
   }

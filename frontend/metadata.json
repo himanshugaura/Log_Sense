@@ -1,0 +1,6 @@
+{
+  "name": "LogSense — AI Incident Triage",
+  "description": "Find the real error, trace the service, and resolve incidents across cloud applications with template clustering and evidence-backed triage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
