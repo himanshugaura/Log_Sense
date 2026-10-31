@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   X,
   FileCode2,
+  AlertCircle,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -43,7 +44,7 @@ const nodeTypes = {
 export const ServiceMapPage: React.FC = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
-  const { activeProjectId } = useProject();
+  const { activeProjectId, projects, selectProject, isLoading: projectLoading } = useProject();
 
   const [graphData, setGraphData] = useState<DependencyGraph | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -56,12 +57,14 @@ export const ServiceMapPage: React.FC = () => {
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceDesc, setNewServiceDesc] = useState('');
   const [creatingService, setCreatingService] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
 
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [linkSourceId, setLinkSourceId] = useState('');
   const [linkTargetId, setLinkTargetId] = useState('');
   const [linkType, setLinkType] = useState('HTTP');
   const [creatingLink, setCreatingLink] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   const isDark = theme === 'dark';
 
@@ -154,6 +157,12 @@ export const ServiceMapPage: React.FC = () => {
     loadGraph();
   }, [loadGraph]);
 
+  useEffect(() => {
+    if (!activeProjectId && projects.length > 0) {
+      selectProject(projects[0].id);
+    }
+  }, [activeProjectId, projects, selectProject]);
+
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     []
@@ -166,18 +175,36 @@ export const ServiceMapPage: React.FC = () => {
 
   const handleRegisterService = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newServiceName.trim() || !activeProjectId) return;
+    if (!newServiceName.trim()) return;
+    if (!activeProjectId) {
+      setRegisterError('No active project found. Please select or create a project first.');
+      return;
+    }
+    const cleanName = newServiceName.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!/^[a-zA-Z0-9_-]+$/.test(cleanName)) {
+      setRegisterError('Service name can only contain alphanumeric characters, underscores, and hyphens (e.g., auth-service).');
+      return;
+    }
+
     setCreatingService(true);
+    setRegisterError(null);
     try {
       await serviceMapService.createService(
         activeProjectId,
-        newServiceName.trim(),
+        cleanName,
         newServiceDesc.trim() || undefined
       );
       setNewServiceName('');
       setNewServiceDesc('');
       setRegisterModalOpen(false);
       await loadGraph();
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg.includes('already exists') || msg.includes('409')) {
+        setRegisterError(`Service "${cleanName}" already exists in this project.`);
+      } else {
+        setRegisterError(msg || 'Failed to register service.');
+      }
     } finally {
       setCreatingService(false);
     }
@@ -185,12 +212,19 @@ export const ServiceMapPage: React.FC = () => {
 
   const handleCreateLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!linkSourceId || !linkTargetId || linkSourceId === linkTargetId) return;
+    if (!linkSourceId || !linkTargetId) return;
+    if (linkSourceId === linkTargetId) {
+      setLinkError('A service cannot declare a dependency on itself.');
+      return;
+    }
     setCreatingLink(true);
+    setLinkError(null);
     try {
       await serviceMapService.createDependency(linkSourceId, linkTargetId, linkType);
       setLinkModalOpen(false);
       await loadGraph();
+    } catch (err: any) {
+      setLinkError(err?.message || 'Failed to connect dependency.');
     } finally {
       setCreatingLink(false);
     }
@@ -199,6 +233,25 @@ export const ServiceMapPage: React.FC = () => {
   const selectedNodeData = graphData?.nodes.find((n) => n.id === selectedServiceId);
   const outgoingLinks = graphData?.edges.filter((e) => e.source === selectedServiceId) || [];
   const incomingLinks = graphData?.edges.filter((e) => e.target === selectedServiceId) || [];
+
+  if (projects.length === 0 && !projectLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-6 space-y-4">
+        <Network className="w-12 h-12 text-neutral-400" />
+        <div>
+          <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
+            No Projects Available
+          </h2>
+          <p className="text-xs text-neutral-500 max-w-sm mt-1">
+            Please create an organization and project first before configuring microservices and topology DAGs.
+          </p>
+        </div>
+        <Button variant="primary" size="sm" onClick={() => navigate('/organizations')}>
+          Go to Workspaces
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -227,7 +280,10 @@ export const ServiceMapPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLinkModalOpen(true)}
+            onClick={() => {
+              setLinkError(null);
+              setLinkModalOpen(true);
+            }}
             icon={<Network className="w-3.5 h-3.5" />}
           >
             Link Dependency
@@ -236,7 +292,10 @@ export const ServiceMapPage: React.FC = () => {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => setRegisterModalOpen(true)}
+            onClick={() => {
+              setRegisterError(null);
+              setRegisterModalOpen(true);
+            }}
             icon={<Plus className="w-3.5 h-3.5" />}
           >
             Register Service
@@ -284,7 +343,10 @@ export const ServiceMapPage: React.FC = () => {
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => setRegisterModalOpen(true)}
+                  onClick={() => {
+                    setRegisterError(null);
+                    setRegisterModalOpen(true);
+                  }}
                   icon={<Plus className="w-3.5 h-3.5" />}
                 >
                   Register First Service
@@ -434,6 +496,13 @@ export const ServiceMapPage: React.FC = () => {
               Add a microservice to this project topology for log parsing and root cause tracking.
             </p>
 
+            {registerError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs flex items-center gap-2 border border-red-200 dark:border-red-900/60">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{registerError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleRegisterService} className="mt-4 space-y-4">
               <Input
                 label="Service Name"
@@ -478,6 +547,13 @@ export const ServiceMapPage: React.FC = () => {
             <p className="mt-1 text-xs text-neutral-500">
               Establish directed call graph edge between services (Source → Target).
             </p>
+
+            {linkError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs flex items-center gap-2 border border-red-200 dark:border-red-900/60">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{linkError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleCreateLink} className="mt-4 space-y-4">
               <div>

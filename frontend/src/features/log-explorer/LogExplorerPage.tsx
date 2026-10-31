@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search,
   Filter,
@@ -15,6 +16,8 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
+  Network,
+  Plus,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -26,6 +29,7 @@ import { serviceMapService } from '../../services/service-map-service';
 import { useProject } from '../../context/ProjectContext';
 
 export const LogExplorerPage: React.FC = () => {
+  const navigate = useNavigate();
   const { activeProject, activeProjectId } = useProject();
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -195,14 +199,25 @@ export const LogExplorerPage: React.FC = () => {
           >
             Refresh
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setUploadModalOpen(true)}
-            icon={<UploadCloud className="w-3.5 h-3.5" />}
-          >
-            Upload Raw Log File
-          </Button>
+          {services.length > 0 ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setUploadModalOpen(true)}
+              icon={<UploadCloud className="w-3.5 h-3.5" />}
+            >
+              Upload Raw Log File
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate('/dashboard/service-map')}
+              icon={<Plus className="w-3.5 h-3.5" />}
+            >
+              Register Service First
+            </Button>
+          )}
         </div>
       </div>
 
@@ -390,16 +405,40 @@ export const LogExplorerPage: React.FC = () => {
 
               {logs.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-xs text-neutral-500 space-y-3">
-                    <p>No log records found matching the active filter query.</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setUploadModalOpen(true)}
-                      icon={<UploadCloud className="w-3.5 h-3.5" />}
-                    >
-                      Upload New Log File
-                    </Button>
+                  <td colSpan={6} className="p-12 text-center text-xs text-neutral-500">
+                    {services.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <Network className="w-8 h-8 text-neutral-400 mx-auto" />
+                        <div>
+                          <p className="font-semibold text-neutral-800 dark:text-neutral-200">
+                            No microservices registered yet
+                          </p>
+                          <p className="max-w-sm text-neutral-500 mt-1">
+                            A microservice architecture must be defined before log files can be ingested and mapped.
+                          </p>
+                        </div>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => navigate('/dashboard/service-map')}
+                          icon={<Plus className="w-3.5 h-3.5" />}
+                        >
+                          Register First Service
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <p>No log records found matching the active filter query.</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUploadModalOpen(true)}
+                          icon={<UploadCloud className="w-3.5 h-3.5" />}
+                        >
+                          Upload New Log File
+                        </Button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )}
@@ -466,143 +505,177 @@ export const LogExplorerPage: React.FC = () => {
               </div>
             )}
 
-            {/* Target Service Option */}
-            <div className="mb-4">
-              <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 block mb-1">
-                Associate with Service (Optional)
-              </label>
-              <select
-                value={uploadServiceId}
-                onChange={(e) => setUploadServiceId(e.target.value)}
-                className="w-full text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3 py-2 text-neutral-900 dark:text-neutral-100 focus:outline-none"
-              >
-                <option value="all">Auto-detect from log entries</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {services.length === 0 ? (
+              <div className="py-6 text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center mx-auto text-amber-700 dark:text-amber-400">
+                  <Network className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                    Microservice Required Before Log Ingestion
+                  </h4>
+                  <p className="text-xs text-neutral-500 mt-1 max-w-sm mx-auto">
+                    In LogSense, telemetry logs must be mapped to a microservice in your topology. Please register at least one service before uploading logs.
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <Button variant="ghost" size="sm" onClick={resetUploadModal}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      resetUploadModal();
+                      navigate('/dashboard/service-map');
+                    }}
+                    icon={<Plus className="w-3.5 h-3.5" />}
+                  >
+                    Register Service Now
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Target Service Option */}
+                <div className="mb-4">
+                  <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 block mb-1">
+                    Associate with Service (Optional)
+                  </label>
+                  <select
+                    value={uploadServiceId}
+                    onChange={(e) => setUploadServiceId(e.target.value)}
+                    className="w-full text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3 py-2 text-neutral-900 dark:text-neutral-100 focus:outline-none"
+                  >
+                    <option value="all">Auto-detect from log entries</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            {/* Drop Zone */}
-            {uploadState === 'idle' && (
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (e.dataTransfer.files?.[0]) {
-                    handleFileSelect(e.dataTransfer.files[0]);
-                  }
-                }}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors ${
-                  isDragging
-                    ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-neutral-850'
-                    : 'border-neutral-300 dark:border-neutral-700 hover:border-neutral-400'
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".log,.txt,.csv,.json"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) handleFileSelect(e.target.files[0]);
-                  }}
-                />
-                <FileUp className="w-8 h-8 mx-auto mb-2 text-neutral-400" />
-                {uploadFile ? (
-                  <div>
-                    <span className="font-semibold text-xs text-neutral-900 dark:text-neutral-100 block">
-                      {uploadFile.name}
-                    </span>
-                    <span className="text-[11px] text-neutral-400">
-                      {(uploadFile.size / 1024).toFixed(1)} KB · Ready to upload
-                    </span>
+                {/* Drop Zone */}
+                {uploadState === 'idle' && (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      if (e.dataTransfer.files?.[0]) {
+                        handleFileSelect(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors ${
+                      isDragging
+                        ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-neutral-850'
+                        : 'border-neutral-300 dark:border-neutral-700 hover:border-neutral-400'
+                    }`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".log,.txt,.csv,.json"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) handleFileSelect(e.target.files[0]);
+                      }}
+                    />
+                    <FileUp className="w-8 h-8 mx-auto mb-2 text-neutral-400" />
+                    {uploadFile ? (
+                      <div>
+                        <span className="font-semibold text-xs text-neutral-900 dark:text-neutral-100 block">
+                          {uploadFile.name}
+                        </span>
+                        <span className="text-[11px] text-neutral-400">
+                          {(uploadFile.size / 1024).toFixed(1)} KB · Ready to upload
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                          Click to choose or drag raw log file here
+                        </p>
+                        <p className="text-[11px] text-neutral-400 mt-1">
+                          Supports .log, .txt, .csv, and JSON formats up to 50MB
+                        </p>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div>
-                    <p className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
-                      Click to choose or drag raw log file here
-                    </p>
-                    <p className="text-[11px] text-neutral-400 mt-1">
-                      Supports .log, .txt, .csv, and JSON formats up to 50MB
+                )}
+
+                {/* Uploading or Processing Progress */}
+                {(uploadState === 'uploading' || uploadState === 'processing') && (
+                  <div className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="w-5 h-5 text-amber-600 dark:text-amber-500 animate-spin shrink-0" />
+                      <div>
+                        <h4 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
+                          {uploadState === 'uploading'
+                            ? 'Uploading log stream...'
+                            : 'Processing & clustering log stream...'}
+                        </h4>
+                        <p className="text-[11px] text-neutral-500">
+                          {uploadState === 'uploading'
+                            ? 'Transferring log file to storage'
+                            : `Processed ${activeJob?.processedLines || 0} lines · ${activeJob?.progressPercentage || 10}%`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-amber-600 dark:bg-amber-500 h-2 transition-all duration-300 rounded-full"
+                        style={{
+                          width: `${
+                            uploadState === 'uploading'
+                              ? 20
+                              : activeJob?.progressPercentage || 40
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Success State */}
+                {uploadState === 'success' && (
+                  <div className="p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-semibold text-sm">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Log Ingestion & Anomaly Analysis Complete!</span>
+                    </div>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                      Logs processed successfully. New entries and patterns are now available in the stream.
                     </p>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Uploading or Processing Progress */}
-            {(uploadState === 'uploading' || uploadState === 'processing') && (
-              <div className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="w-5 h-5 text-amber-600 dark:text-amber-500 animate-spin shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                      {uploadState === 'uploading'
-                        ? 'Uploading log stream...'
-                        : 'Processing & clustering log stream...'}
-                    </h4>
-                    <p className="text-[11px] text-neutral-500">
-                      {uploadState === 'uploading'
-                        ? 'Transferring log file to storage'
-                        : `Processed ${activeJob?.processedLines || 0} lines · ${activeJob?.progressPercentage || 10}%`}
-                    </p>
-                  </div>
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-2 mt-5 pt-3 border-t border-neutral-100 dark:border-neutral-850">
+                  <Button variant="ghost" size="sm" onClick={resetUploadModal}>
+                    {uploadState === 'success' ? 'Close' : 'Cancel'}
+                  </Button>
+                  {uploadState === 'idle' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={!uploadFile}
+                      onClick={handleStartUpload}
+                      icon={<UploadCloud className="w-3.5 h-3.5" />}
+                    >
+                      Upload & Ingest
+                    </Button>
+                  )}
                 </div>
-
-                <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="bg-amber-600 dark:bg-amber-500 h-2 transition-all duration-300 rounded-full"
-                    style={{
-                      width: `${
-                        uploadState === 'uploading'
-                          ? 20
-                          : activeJob?.progressPercentage || 40
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
+              </>
             )}
-
-            {/* Success State */}
-            {uploadState === 'success' && (
-              <div className="p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
-                <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-semibold text-sm">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Log Ingestion & Anomaly Analysis Complete!</span>
-                </div>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                  Logs processed successfully. New entries and patterns are now available in the stream.
-                </p>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-2 mt-5 pt-3 border-t border-neutral-100 dark:border-neutral-850">
-              <Button variant="ghost" size="sm" onClick={resetUploadModal}>
-                {uploadState === 'success' ? 'Close' : 'Cancel'}
-              </Button>
-              {uploadState === 'idle' && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={!uploadFile}
-                  onClick={handleStartUpload}
-                  icon={<UploadCloud className="w-3.5 h-3.5" />}
-                >
-                  Upload & Ingest
-                </Button>
-              )}
-            </div>
           </div>
         </div>
       )}

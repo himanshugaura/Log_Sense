@@ -75,15 +75,24 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsLoading(true);
     const orgIdToUse = targetOrgId || activeOrganizationId || undefined;
     try {
-      const list = await projectService.getProjects(orgIdToUse);
+      let list = await projectService.getProjects(orgIdToUse);
+      if (list.length === 0 && orgIdToUse) {
+        // Fallback: fetch all user projects in case stored org ID was stale
+        const allList = await projectService.getProjects();
+        if (allList.length > 0) {
+          list = allList;
+        }
+      }
       setProjects(list);
 
       if (list.length > 0) {
         const found = list.find((p) => p.id === activeProjectId);
-        if (!found) {
-          const firstId = list[0].id;
-          setActiveProjectId(firstId);
-          localStorage.setItem(ACTIVE_PROJECT_KEY, firstId);
+        const resolvedId = found ? found.id : list[0].id;
+        setActiveProjectId(resolvedId);
+        localStorage.setItem(ACTIVE_PROJECT_KEY, resolvedId);
+        if (list[0].organizationId && !activeOrganizationId) {
+          setActiveOrganizationId(list[0].organizationId);
+          localStorage.setItem(ACTIVE_ORG_KEY, list[0].organizationId);
         }
       } else {
         setActiveProjectId('');

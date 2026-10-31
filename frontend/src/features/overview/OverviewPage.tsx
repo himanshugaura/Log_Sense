@@ -11,6 +11,7 @@ import {
   UploadCloud,
   Building2,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -148,14 +149,25 @@ export const OverviewPage: React.FC = () => {
           >
             {refreshing ? 'Refreshing' : 'Refresh'}
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => navigate('/dashboard/logs')}
-            icon={<UploadCloud className="w-3.5 h-3.5" />}
-          >
-            Upload Raw Log File
-          </Button>
+          {monitoredServicesCount > 0 ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate('/dashboard/logs')}
+              icon={<UploadCloud className="w-3.5 h-3.5" />}
+            >
+              Upload Raw Log File
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate('/dashboard/service-map')}
+              icon={<Plus className="w-3.5 h-3.5" />}
+            >
+              Register Service First
+            </Button>
+          )}
         </div>
       </div>
 
@@ -288,6 +300,26 @@ export const OverviewPage: React.FC = () => {
                       <Area type="monotone" dataKey="errors" stroke="#dc2626" fillOpacity={0.3} strokeWidth={2} name="Errors" />
                     </AreaChart>
                   </ResponsiveContainer>
+                </div>
+              ) : monitoredServicesCount === 0 ? (
+                <div className="h-72 flex flex-col items-center justify-center text-center p-6 space-y-3">
+                  <Network className="w-10 h-10 text-neutral-400" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                      Register Microservices First
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-1 max-w-sm">
+                      A microservice architecture must be defined before log streams can be ingested and mapped.
+                    </p>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate('/dashboard/service-map')}
+                    icon={<Plus className="w-3.5 h-3.5" />}
+                  >
+                    Register First Service
+                  </Button>
                 </div>
               ) : (
                 <div className="h-72 flex flex-col items-center justify-center text-center p-6 space-y-3">
@@ -460,16 +492,29 @@ export const OverviewPage: React.FC = () => {
           {incidents.length === 0 && !loading && (
             <div className="p-8 text-center space-y-3">
               <p className="text-xs text-neutral-500">
-                No incidents reported for this project. Upload raw logs to start automated root cause analysis.
+                {monitoredServicesCount === 0
+                  ? 'No microservices registered yet. Create services to track topology and triage incidents.'
+                  : 'No incidents reported for this project. Upload raw logs to start automated root cause analysis.'}
               </p>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/dashboard/logs')}
-                icon={<UploadCloud className="w-3.5 h-3.5" />}
-              >
-                Upload Logs
-              </Button>
+              {monitoredServicesCount === 0 ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate('/dashboard/service-map')}
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  Register Service
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate('/dashboard/logs')}
+                  icon={<UploadCloud className="w-3.5 h-3.5" />}
+                >
+                  Upload Logs
+                </Button>
+              )}
             </div>
           )}
         </div>
