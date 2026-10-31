@@ -185,13 +185,6 @@ export const IncidentDetailPage: React.FC = () => {
       ? report.whatShouldIDo
       : defaultSteps;
 
-  // Section 7: How certain are we?
-  const howCertainAreWe = report?.howCertainAreWe || {
-    badge: 'Strongest candidate, not confirmed',
-    explanation:
-      'Our analysis identifies the most likely explanation from available logs. Further investigation is needed to confirm the actual cause.',
-  };
-
   // Scoring data for technical drawer
   const rcaScore = topCandidate?.totalScore ?? 14;
 
@@ -478,26 +471,7 @@ export const IncidentDetailPage: React.FC = () => {
       </Card>
 
       {/* =========================================================================
-          SECTION 4: ANALYSIS CONFIDENCE (How certain are we?)
-          ========================================================================= */}
-      <div className="p-4 sm:p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
-            Analysis Confidence
-          </span>
-          <div className="inline-flex items-center gap-2">
-            <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-              {howCertainAreWe.badge}
-            </span>
-          </div>
-          <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed pt-1">
-            {howCertainAreWe.explanation}
-          </p>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          SECTION 5: EXPANDABLE TECHNICAL EVIDENCE & SCORING (FOR DEVELOPERS)
+          SECTION 4: EXPANDABLE TECHNICAL EVIDENCE & SCORING (FOR DEVELOPERS)
           ========================================================================= */}
       <div className="border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden bg-neutral-50/60 dark:bg-neutral-900/40">
         <button
