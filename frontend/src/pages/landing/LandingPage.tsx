@@ -180,10 +180,10 @@ export const LandingPage: React.FC = () => {
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => navigate('/dashboard')}
+                  onClick={() => navigate('/organizations')}
                   icon={<ArrowRight className="w-4 h-4" />}
                 >
-                  Explore Dashboard
+                  Get Started
                 </Button>
                 <Button
                   variant="outline"
@@ -282,7 +282,7 @@ export const LandingPage: React.FC = () => {
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => navigate('/dashboard')}
+                    onClick={() => navigate('/organizations')}
                     icon={<ArrowRight className="w-3.5 h-3.5" />}
                   >
                     Open Live Investigation View
@@ -381,7 +381,7 @@ export const LandingPage: React.FC = () => {
                 onClick={() => navigate('/dashboard')}
                 icon={<ArrowRight className="w-4 h-4" />}
               >
-                Launch LogSense Console
+                Open Workspaces
               </Button>
             </div>
 
@@ -571,7 +571,7 @@ export const LandingPage: React.FC = () => {
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
-        onSuccess={() => navigate('/dashboard')}
+        onSuccess={() => navigate('/organizations')}
       />
     </div>
   );

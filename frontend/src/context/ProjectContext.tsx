@@ -1,34 +1,81 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { Project } from '../types';
+import { Project, Organization } from '../types';
 import { projectService } from '../services/project-service';
+import { organizationService } from '../services/organization-service';
 
+const ACTIVE_ORG_KEY = 'logsense_active_org_id';
 const ACTIVE_PROJECT_KEY = 'logsense_active_project_id';
 
 interface ProjectContextType {
+  // Organizations
+  organizations: Organization[];
+  activeOrganization: Organization | null;
+  activeOrganizationId: string;
+  selectOrganization: (id: string) => void;
+  createOrganization: (name: string) => Promise<Organization>;
+  deleteOrganization: (id: string) => Promise<void>;
+  refreshOrganizations: () => Promise<Organization[]>;
+
+  // Projects
   projects: Project[];
   activeProject: Project | null;
   activeProjectId: string;
   isLoading: boolean;
   selectProject: (id: string) => void;
-  createProject: (name: string, description?: string) => Promise<Project>;
-  refreshProjects: () => Promise<void>;
+  createProject: (name: string, description?: string, orgId?: string) => Promise<Project>;
+  deleteProject: (id: string) => Promise<void>;
+  refreshProjects: (orgId?: string) => Promise<Project[]>;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isSignedIn } = useAuth();
+
+  // Organization states
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [activeOrganizationId, setActiveOrganizationId] = useState<string>(() => {
+    return localStorage.getItem(ACTIVE_ORG_KEY) || '';
+  });
+
+  // Project states
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     return localStorage.getItem(ACTIVE_PROJECT_KEY) || '';
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const refreshProjects = useCallback(async () => {
-    setIsLoading(true);
+  // Refresh Organizations
+  const refreshOrganizations = useCallback(async (): Promise<Organization[]> => {
     try {
-      const list = await projectService.getProjects();
+      const orgs = await organizationService.getOrganizations();
+      setOrganizations(orgs);
+
+      if (orgs.length > 0) {
+        const found = orgs.find((o) => o.id === activeOrganizationId);
+        if (!found) {
+          const firstOrgId = orgs[0].id;
+          setActiveOrganizationId(firstOrgId);
+          localStorage.setItem(ACTIVE_ORG_KEY, firstOrgId);
+        }
+      } else {
+        setActiveOrganizationId('');
+        localStorage.removeItem(ACTIVE_ORG_KEY);
+      }
+      return orgs;
+    } catch (err) {
+      console.warn('Failed to load organizations:', err);
+      return [];
+    }
+  }, [activeOrganizationId]);
+
+  // Refresh Projects
+  const refreshProjects = useCallback(async (targetOrgId?: string): Promise<Project[]> => {
+    setIsLoading(true);
+    const orgIdToUse = targetOrgId || activeOrganizationId || undefined;
+    try {
+      const list = await projectService.getProjects(orgIdToUse);
       setProjects(list);
 
       if (list.length > 0) {
@@ -42,16 +89,48 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setActiveProjectId('');
         localStorage.removeItem(ACTIVE_PROJECT_KEY);
       }
+      return list;
     } catch (err) {
       console.warn('Failed to load projects:', err);
+      return [];
     } finally {
       setIsLoading(false);
     }
-  }, [activeProjectId]);
+  }, [activeOrganizationId, activeProjectId]);
 
+  // Initial load
   useEffect(() => {
-    refreshProjects();
+    if (isSignedIn) {
+      refreshOrganizations().then((orgs) => {
+        const currentOrg = orgs.find((o) => o.id === activeOrganizationId) || orgs[0];
+        if (currentOrg) {
+          refreshProjects(currentOrg.id);
+        } else {
+          setIsLoading(false);
+        }
+      });
+    } else {
+      setIsLoading(false);
+    }
   }, [isSignedIn]);
+
+  const selectOrganization = useCallback((id: string) => {
+    setActiveOrganizationId(id);
+    localStorage.setItem(ACTIVE_ORG_KEY, id);
+    refreshProjects(id);
+  }, [refreshProjects]);
+
+  const handleCreateOrganization = useCallback(async (name: string): Promise<Organization> => {
+    const created = await organizationService.createOrganization(name);
+    await refreshOrganizations();
+    selectOrganization(created.id);
+    return created;
+  }, [refreshOrganizations, selectOrganization]);
+
+  const handleDeleteOrganization = useCallback(async (id: string): Promise<void> => {
+    await organizationService.deleteOrganization(id);
+    await refreshOrganizations();
+  }, [refreshOrganizations]);
 
   const selectProject = useCallback((id: string) => {
     setActiveProjectId(id);
@@ -60,26 +139,45 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const handleCreateProject = useCallback(
-    async (name: string, description?: string): Promise<Project> => {
-      const created = await projectService.createProject({ name, description });
-      await refreshProjects();
+    async (name: string, description?: string, orgId?: string): Promise<Project> => {
+      const resolvedOrgId = orgId || activeOrganizationId;
+      const created = await projectService.createProject({
+        name,
+        description,
+        organizationId: resolvedOrgId || undefined,
+      });
+      await refreshProjects(resolvedOrgId);
       selectProject(created.id);
       return created;
     },
-    [refreshProjects, selectProject]
+    [activeOrganizationId, refreshProjects, selectProject]
   );
 
+  const handleDeleteProject = useCallback(async (id: string): Promise<void> => {
+    await projectService.deleteProject(id);
+    await refreshProjects();
+  }, [refreshProjects]);
+
+  const activeOrganization = organizations.find((o) => o.id === activeOrganizationId) || organizations[0] || null;
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0] || null;
 
   return (
     <ProjectContext.Provider
       value={{
+        organizations,
+        activeOrganization,
+        activeOrganizationId: activeOrganization ? activeOrganization.id : activeOrganizationId,
+        selectOrganization,
+        createOrganization: handleCreateOrganization,
+        deleteOrganization: handleDeleteOrganization,
+        refreshOrganizations,
         projects,
         activeProject,
         activeProjectId: activeProject ? activeProject.id : activeProjectId,
         isLoading,
         selectProject,
         createProject: handleCreateProject,
+        deleteProject: handleDeleteProject,
         refreshProjects,
       }}
     >

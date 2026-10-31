@@ -9,6 +9,8 @@ import {
   RefreshCw,
   ChevronRight,
   UploadCloud,
+  Building2,
+  ArrowRight,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,7 +39,7 @@ export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const { isSignedIn } = useAuth();
-  const { activeProject, activeProjectId } = useProject();
+  const { activeProject, activeProjectId, projects } = useProject();
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
@@ -92,6 +94,33 @@ export const OverviewPage: React.FC = () => {
   const criticalCount = incidents.filter((i) => i.severity === 'critical' && i.status !== 'RESOLVED').length;
   const highCount = incidents.filter((i) => i.severity === 'high' && i.status !== 'RESOLVED').length;
   const monitoredServicesCount = services.length || activeProject?._count?.services || 0;
+
+  if (!loading && (!activeProjectId || projects.length === 0)) {
+    return (
+      <div className="py-20 text-center max-w-md mx-auto space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-850 mx-auto flex items-center justify-center text-neutral-600 dark:text-neutral-300">
+          <Building2 className="w-6 h-6" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+            No Active Infrastructure Workspace
+          </h2>
+          <p className="text-xs text-neutral-500 mt-1">
+            Complete your onboarding flow: create an organization, define projects, and register your microservices topology first.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => navigate('/organizations')}
+          className="mx-auto"
+          icon={<ArrowRight className="w-4 h-4" />}
+        >
+          Go to Organizations & Setup
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

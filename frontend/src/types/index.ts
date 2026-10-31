@@ -1,5 +1,16 @@
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
 
+export interface Organization {
+  id: string;
+  name: string;
+  ownerId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  _count?: {
+    projects?: number;
+  };
+}
+
 export interface Project {
   id: string;
   name: string;

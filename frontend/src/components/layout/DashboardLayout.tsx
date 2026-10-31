@@ -16,6 +16,8 @@ import {
   ChevronRight,
   Plus,
   Layers,
+  Building2,
+  Cpu,
 } from 'lucide-react';
 import { UserButton, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
 import { useTheme } from '../../context/ThemeContext';
@@ -133,6 +135,15 @@ export const DashboardLayout: React.FC = () => {
             ))}
             <option value="__new__">+ Create New Project...</option>
           </select>
+          {activeProjectId && (
+            <Link
+              to={`/projects/${activeProjectId}/services`}
+              className="mt-2 text-[11px] text-amber-700 dark:text-amber-500 hover:underline flex items-center gap-1 font-mono"
+            >
+              <Cpu className="w-3 h-3" />
+              <span>Manage Services & Graph →</span>
+            </Link>
+          )}
         </div>
 
         {/* Navigation list */}
@@ -162,7 +173,14 @@ export const DashboardLayout: React.FC = () => {
         </nav>
 
         {/* Sidebar Footer */}
-        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 space-y-2">
+          <Link
+            to="/organizations"
+            className="flex items-center gap-2 text-xs text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 px-2 py-1 transition-colors"
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Switch Organization</span>
+          </Link>
           <Link
             to="/"
             className="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 px-2 py-1 transition-colors"

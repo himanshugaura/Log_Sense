@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Sun, Moon, ArrowRight } from 'lucide-react';
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from '@clerk/clerk-react';
 import { useTheme } from '../../context/ThemeContext';
 import { Button } from '../ui/Button';
 
@@ -110,9 +110,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
                 Sign In
               </Button>
             </SignInButton>
+            <SignUpButton mode="modal">
+              <Button variant="primary" size="sm">
+                Get Started
+              </Button>
+            </SignUpButton>
           </SignedOut>
 
           <SignedIn>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/organizations')}
+            >
+              Workspaces
+            </Button>
             <UserButton
               afterSignOutUrl="/"
               appearance={{
@@ -122,15 +134,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
               }}
             />
           </SignedIn>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => navigate('/dashboard')}
-            icon={<ArrowRight className="w-3.5 h-3.5" />}
-          >
-            Enter Console
-          </Button>
         </div>
 
         {/* Mobile controls */}
@@ -194,19 +197,25 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
                   Sign In
                 </Button>
               </SignInButton>
+              <SignUpButton mode="modal">
+                <Button variant="primary" size="md" className="w-full justify-center">
+                  Get Started
+                </Button>
+              </SignUpButton>
             </SignedOut>
-            <Button
-              variant="primary"
-              size="md"
-              className="w-full justify-center"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                navigate('/dashboard');
-              }}
-              icon={<ArrowRight className="w-4 h-4" />}
-            >
-              Enter Console
-            </Button>
+            <SignedIn>
+              <Button
+                variant="primary"
+                size="md"
+                className="w-full justify-center"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate('/organizations');
+                }}
+              >
+                Go to Workspaces
+              </Button>
+            </SignedIn>
           </div>
         </div>
       )}

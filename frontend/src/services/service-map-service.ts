@@ -103,4 +103,10 @@ export const serviceMapService = {
       await apiClient.fetchEndpoint(`/services/${serviceId}`, { method: 'DELETE' });
     }
   },
+
+  async deleteDependency(dependencyId: string): Promise<void> {
+    if (apiClient.isBackendConnected) {
+      await apiClient.fetchEndpoint(`/services/dependencies/${dependencyId}`, { method: 'DELETE' });
+    }
+  },
 };

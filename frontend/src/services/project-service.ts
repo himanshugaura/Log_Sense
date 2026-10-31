@@ -9,13 +9,16 @@ export interface CreateProjectPayload {
 }
 
 export const projectService = {
-  async getProjects(): Promise<Project[]> {
+  async getProjects(organizationId?: string): Promise<Project[]> {
     if (!apiClient.isBackendConnected) {
       return [];
     }
 
     try {
-      const response = await apiClient.fetchEndpoint<{ projects: Project[] }>('/projects');
+      const endpoint = organizationId
+        ? `/projects?organizationId=${organizationId}`
+        : '/projects';
+      const response = await apiClient.fetchEndpoint<{ projects: Project[] }>(endpoint);
       if (response?.projects && Array.isArray(response.projects)) {
         return response.projects;
       }
