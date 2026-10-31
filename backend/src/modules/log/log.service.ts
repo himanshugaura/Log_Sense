@@ -64,12 +64,21 @@ export class LogService {
       contentType: params.file.mimetype || "text/plain",
     });
 
-    // 3. Atomically create LogSource and ProcessingJob in PostgreSQL
+    // 3. Atomically reset previous runs (single log per project) and create LogSource & ProcessingJob in PostgreSQL
     const { logSource, processingJob } = await prisma.$transaction(async (tx) => {
+      // Clear any prior log telemetry for this project to ensure 1:1 service-to-log isolation
+      await tx.incidentSummary.deleteMany({ where: { incident: { projectId: params.projectId } } });
+      await tx.incident.deleteMany({ where: { projectId: params.projectId } });
+      await tx.anomaly.deleteMany({ where: { projectId: params.projectId } });
+      await tx.logEntry.deleteMany({ where: { projectId: params.projectId } });
+      await tx.parserState.deleteMany({ where: { projectId: params.projectId } });
+      await tx.logSource.deleteMany({ where: { projectId: params.projectId } });
+      await tx.processingJob.deleteMany({ where: { projectId: params.projectId } });
+
       const source = await tx.logSource.create({
         data: {
           projectId: params.projectId,
-          serviceName: params.serviceName || null,
+          serviceName: params.serviceName || project.name,
           name: params.file.originalname,
           sourceType: params.sourceType || "FILE_UPLOAD",
           fileKey: uploadResult.key,

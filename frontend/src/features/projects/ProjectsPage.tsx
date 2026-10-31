@@ -78,7 +78,7 @@ export const ProjectsPage: React.FC = () => {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this project and all its services?')) return;
+    if (!confirm('Are you sure you want to delete this microservice project and its log telemetry?')) return;
     try {
       await deleteProject(id);
     } catch (err: any) {
@@ -109,7 +109,7 @@ export const ProjectsPage: React.FC = () => {
             </div>
             <h1 className="font-display text-2xl font-bold tracking-tight">Projects</h1>
             <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-              Projects isolate environments, microservices, and incident triage telemetry.
+              Each project represents an isolated microservice application and its single log telemetry stream.
             </p>
           </div>
 

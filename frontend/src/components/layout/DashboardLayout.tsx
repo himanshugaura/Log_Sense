@@ -64,10 +64,10 @@ export const DashboardLayout: React.FC = () => {
 
   const navItems = [
     { label: 'Overview', path: '/dashboard', icon: LayoutDashboard, exact: true },
-    { label: 'Log Explorer', path: '/dashboard/logs', icon: FileCode2 },
-    { label: 'Log Clusters', path: '/dashboard/clusters', icon: FolderTree },
-    { label: 'Anomalies', path: '/dashboard/anomalies', icon: AlertTriangle },
     { label: 'Incidents & RCA', path: '/dashboard/incidents', icon: Flame },
+    { label: 'Anomalies', path: '/dashboard/anomalies', icon: AlertTriangle },
+    { label: 'Log Clusters', path: '/dashboard/clusters', icon: FolderTree },
+    { label: 'Log Explorer', path: '/dashboard/logs', icon: FileCode2 },
     { label: 'Settings & Status', path: '/dashboard/settings', icon: Layers },
   ];
 
@@ -133,15 +133,6 @@ export const DashboardLayout: React.FC = () => {
             ))}
             <option value="__new__">+ Create New Project...</option>
           </select>
-          {activeProjectId && (
-            <Link
-              to={`/projects/${activeProjectId}/services`}
-              className="mt-2 text-[11px] text-amber-700 dark:text-amber-500 hover:underline flex items-center gap-1 font-mono"
-            >
-              <Cpu className="w-3 h-3" />
-              <span>Manage Services & Graph →</span>
-            </Link>
-          )}
         </div>
 
         {/* Navigation list */}

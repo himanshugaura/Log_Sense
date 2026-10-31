@@ -2,17 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileCode2,
-  AlertOctagon,
   AlertTriangle,
   Flame,
   RefreshCw,
   UploadCloud,
-  Building2,
   ArrowRight,
   CheckCircle2,
   Sparkles,
   ChevronRight,
   TrendingUp,
+  FolderTree,
+  FileText,
+  Clock,
+  ShieldCheck,
+  Cpu,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,7 +36,7 @@ import { incidentService } from '../../services/incident-service';
 import { anomalyService } from '../../services/anomaly-service';
 import { logService } from '../../services/log-service';
 import { UploadLogModal } from '../../components/modals/UploadLogModal';
-import { Incident, Anomaly } from '../../types';
+import { Incident, Anomaly, LogCluster } from '../../types';
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
@@ -43,6 +46,8 @@ export const OverviewPage: React.FC = () => {
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [clusters, setClusters] = useState<LogCluster[]>([]);
+  const [logSource, setLogSource] = useState<any | null>(null);
   const [logCount, setLogCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,14 +59,19 @@ export const OverviewPage: React.FC = () => {
       return;
     }
     try {
-      const [incList, anomList, logsRes] = await Promise.all([
+      const [incList, anomList, clustersList, logsRes, sourcesList] = await Promise.all([
         incidentService.getIncidents(activeProjectId),
         anomalyService.getAnomalies(activeProjectId),
+        logService.getLogClusters(activeProjectId),
         logService.getLogs(activeProjectId, { limit: 1 }),
+        logService.getLogSources(activeProjectId),
       ]);
+
       setIncidents(incList);
       setAnomalies(anomList);
+      setClusters(clustersList);
       setLogCount(logsRes.total || activeProject?._count?.logEntries || 0);
+      setLogSource(sourcesList.length > 0 ? sourcesList[0] : null);
     } catch (err) {
       console.warn('Failed to load overview data:', err);
     } finally {
@@ -86,25 +96,25 @@ export const OverviewPage: React.FC = () => {
   const tooltipBg = isDark ? '#171717' : '#ffffff';
   const tooltipBorder = isDark ? '#262626' : '#e5e5e5';
 
-  const totalLogs = logCount || activeProject?._count?.logEntries || 0;
+  const totalLogs = logCount || logSource?._count?.logEntries || activeProject?._count?.logEntries || 0;
   const errorSpikesCount = anomalies.filter((a) => a.type === 'SPIKE').length;
-  const newPatternsCount = anomalies.filter((a) => a.type === 'NEW_PATTERN').length;
   const activeIncidents = incidents.filter((i) => i.status !== 'RESOLVED');
-  const criticalCount = activeIncidents.filter((i) => i.severity === 'critical').length;
-  const highCount = activeIncidents.filter((i) => i.severity === 'high').length;
+  const primaryIncident = activeIncidents[0] || incidents[0] || null;
+  const topCandidate = primaryIncident?.rootCauseCandidates?.[0] || null;
 
+  // Zero-state if no project
   if (!loading && (!activeProjectId || projects.length === 0)) {
     return (
       <div className="py-20 text-center max-w-md mx-auto space-y-4">
         <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-850 mx-auto flex items-center justify-center text-neutral-600 dark:text-neutral-300">
-          <Building2 className="w-6 h-6" />
+          <Cpu className="w-6 h-6" />
         </div>
         <div>
           <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-            No Active Workspace
+            No Microservice Project Selected
           </h2>
           <p className="text-xs text-neutral-500 mt-1">
-            Create an organization and project workspace to begin statistical log analysis.
+            Create an organization and project workspace to analyze your service logs.
           </p>
         </div>
         <Button
@@ -120,19 +130,29 @@ export const OverviewPage: React.FC = () => {
     );
   }
 
+  const serviceName = activeProject?.name || 'Microservice';
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Minimal Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-neutral-200 dark:border-neutral-800">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-            Overview
-          </h1>
-          <p className="mt-1 text-xs sm:text-sm text-neutral-500">
-            Statistical anomaly detection, 5-minute moving baselines, and 15-point RCA for{' '}
-            <span className="font-semibold text-neutral-800 dark:text-neutral-200 font-mono">
-              {activeProject?.name || 'Workspace'}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-display text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+              {serviceName}
+            </h1>
+            <span
+              className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
+                activeIncidents.length > 0
+                  ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400'
+                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400'
+              }`}
+            >
+              {activeIncidents.length > 0 ? 'Incident Detected' : 'Operational'}
             </span>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Single-service statistical anomaly detection and point-based root cause analysis.
           </p>
         </div>
 
@@ -153,113 +173,235 @@ export const OverviewPage: React.FC = () => {
             onClick={() => setUploadModalOpen(true)}
             icon={<UploadCloud className="w-3.5 h-3.5" />}
           >
-            Upload Log Dataset
+            {logSource ? 'Replace Log File' : 'Upload Log File'}
           </Button>
         </div>
       </div>
 
-      {/* 4 Core Essential Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Logs */}
+      {/* 1 Log File per Project Dossier */}
+      {logSource ? (
+        <Card padding="md" className="bg-neutral-50/70 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                    {logSource.name}
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold uppercase">
+                    Analyzed
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                  {totalLogs.toLocaleString()} logs · {(logSource.fileSize / 1024).toFixed(1)} KB · Ingested {new Date(logSource.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/dashboard/logs')}
+                icon={<FileCode2 className="w-3.5 h-3.5" />}
+              >
+                Explore Logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setUploadModalOpen(true)}
+              >
+                Replace File
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        /* Zero Log State: Minimal Dropzone Card */
+        <Card padding="lg" className="border-2 border-dashed border-neutral-200 dark:border-neutral-800 text-center py-10 space-y-3">
+          <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-neutral-850 mx-auto flex items-center justify-center text-neutral-500">
+            <UploadCloud className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+              No Log File Uploaded For {serviceName}
+            </h3>
+            <p className="text-xs text-neutral-500 mt-1 max-w-md mx-auto">
+              Upload your service log file (.log, .txt, .csv, JSON) to trigger Drain3 template clustering, 5-minute statistical spike detection, and 15-point RCA.
+            </p>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setUploadModalOpen(true)}
+            icon={<UploadCloud className="w-3.5 h-3.5" />}
+          >
+            Upload Service Log File
+          </Button>
+        </Card>
+      )}
+
+      {/* 4 Minimal Core Metrics */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Total Logs Ingested</span>
+            <span>Total Events</span>
             <FileCode2 className="w-4 h-4 text-neutral-400" />
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <span className="font-mono text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
               {totalLogs.toLocaleString()}
             </span>
-            <p className="mt-1 text-[11px] text-neutral-500">
-              {totalLogs > 0 ? 'Single application stream' : 'No logs ingested'}
+            <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+              Service telemetry events
             </p>
           </div>
         </Card>
 
-        {/* Statistical Spikes */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Standard Deviation Spikes</span>
+            <span>Statistical Spikes (&gt;2σ)</span>
             <TrendingUp className="w-4 h-4 text-red-500" />
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
               {errorSpikesCount}
             </span>
-            <p className="mt-1 text-[11px] text-neutral-500">
-              {errorSpikesCount > 0 ? '> 2σ deviation detected' : 'Normal error baseline'}
+            <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+              5-minute baseline surges
             </p>
           </div>
         </Card>
 
-        {/* New Patterns */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>New Patterns Discovered</span>
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
+            <span>Drain3 Clusters</span>
+            <FolderTree className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="mt-3">
-            <span className="font-mono text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-              {newPatternsCount}
+          <div className="mt-2.5">
+            <span className="font-mono text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
+              {clusters.length}
             </span>
-            <p className="mt-1 text-[11px] text-neutral-500">
-              {newPatternsCount > 0 ? 'Drain3 new templates' : 'No new error patterns'}
+            <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+              Structured patterns mined
             </p>
           </div>
         </Card>
 
-        {/* Active Incidents */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Active Incidents & RCA</span>
+            <span>Active Incidents</span>
             <Flame className="w-4 h-4 text-red-500" />
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <span className="font-mono text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
               {activeIncidents.length}
             </span>
-            <p className="mt-1 text-[11px] text-neutral-500">
-              {criticalCount > 0 ? `${criticalCount} Critical` : highCount > 0 ? `${highCount} High` : 'All baselines healthy'}
+            <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+              {activeIncidents.length > 0 ? 'Under active investigation' : 'Baseline healthy'}
             </p>
           </div>
         </Card>
       </div>
 
-      {/* Full-Width Telemetry Volume & Error Spikes Chart */}
-      <Card padding="md" className="space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-850">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-              Log Activity & Deviation Timeline
-            </h2>
-            <p className="text-xs text-neutral-500">
-              Overall ingestion volume evaluated against 5-minute statistical moving baselines
+      {/* Primary Root Cause Analysis (15-Pt Engine) Dossier Card */}
+      {primaryIncident ? (
+        <Card padding="lg" className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-850">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <StatusIndicator variant={primaryIncident.severity} label={primaryIncident.severity.toUpperCase()} />
+                <span className="font-mono text-xs font-bold text-neutral-400">
+                  Incident: {primaryIncident.id.slice(0, 8)}
+                </span>
+                <span className="text-xs text-neutral-400 font-mono">
+                  {primaryIncident.firstDetected}
+                </span>
+              </div>
+              <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                {primaryIncident.title}
+              </h2>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/dashboard/incidents/${primaryIncident.id}`)}
+              icon={<ArrowRight className="w-3.5 h-3.5" />}
+            >
+              Open RCA Room
+            </Button>
+          </div>
+
+          {/* AI Synthesis Box */}
+          <div className="p-3.5 rounded-xl bg-neutral-900 text-neutral-100 dark:bg-black border border-neutral-800 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-amber-400 text-xs font-semibold">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Evidence-Backed Root Cause Summary</span>
+            </div>
+            <p className="text-xs leading-relaxed text-neutral-200">
+              {primaryIncident.aiSummary}
             </p>
           </div>
-          {totalLogs > 0 && (
-            <div className="flex items-center gap-4 text-xs">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-neutral-400" />
-                <span className="text-neutral-500">Total Volume</span>
+
+          {/* Top Ranked Initiating Pattern */}
+          {topCandidate && (
+            <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide block">
+                  Rank #1 Initiating Log Pattern
+                </span>
+                <p className="font-mono text-xs font-bold text-amber-700 dark:text-amber-400 break-words">
+                  {topCandidate.template}
+                </p>
+                <p className="text-[11px] text-neutral-500 font-mono">
+                  {topCandidate.explanation}
+                </p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <span className="text-neutral-500">Statistical Spikes</span>
+
+              <div className="text-right shrink-0">
+                <div className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {topCandidate.totalScore} <span className="text-xs font-normal text-neutral-400">/ 15</span>
+                </div>
+                <span className="text-[10px] text-neutral-400 font-mono">RCA Score</span>
               </div>
             </div>
           )}
-        </div>
+        </Card>
+      ) : (
+        <Card padding="md" className="flex items-center gap-3 text-xs text-neutral-500 py-6">
+          <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
+          <span>No active incidents detected. All moving 5-minute statistical baselines are nominal.</span>
+        </Card>
+      )}
 
-        {totalLogs > 0 ? (
-          <div className="h-64 sm:h-72 w-full">
+      {/* Activity Timeline Chart */}
+      {totalLogs > 0 && (
+        <Card padding="md" className="space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-850">
+            <div>
+              <h2 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
+                Telemetry Volume & Error Timeline
+              </h2>
+              <p className="text-[11px] text-neutral-500">
+                1-minute time windows evaluated against sample standard deviation thresholds
+              </p>
+            </div>
+          </div>
+
+          <div className="h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={[
-                  { time: '10:00', totalVolume: Math.round(totalLogs * 0.15), errors: 0 },
-                  { time: '10:05', totalVolume: Math.round(totalLogs * 0.22), errors: Math.min(errorSpikesCount * 5, 2) },
-                  { time: '10:10', totalVolume: Math.round(totalLogs * 0.38), errors: errorSpikesCount * 12 },
-                  { time: '10:15', totalVolume: Math.round(totalLogs * 0.32), errors: Math.round(errorSpikesCount * 8) },
-                  { time: '10:20', totalVolume: Math.round(totalLogs * 0.18), errors: 0 },
+                  { time: 'T-20m', volume: Math.round(totalLogs * 0.15), spikes: 0 },
+                  { time: 'T-15m', volume: Math.round(totalLogs * 0.22), spikes: errorSpikesCount > 0 ? 1 : 0 },
+                  { time: 'T-10m', volume: Math.round(totalLogs * 0.38), spikes: errorSpikesCount },
+                  { time: 'T-5m', volume: Math.round(totalLogs * 0.20), spikes: Math.round(errorSpikesCount * 0.5) },
+                  { time: 'Now', volume: Math.round(totalLogs * 0.05), spikes: 0 },
                 ]}
                 margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
               >
@@ -277,7 +419,7 @@ export const OverviewPage: React.FC = () => {
                 />
                 <Area
                   type="monotone"
-                  dataKey="totalVolume"
+                  dataKey="volume"
                   stroke={isDark ? '#737373' : '#525252'}
                   fill={isDark ? '#262626' : '#f5f5f5'}
                   fillOpacity={0.6}
@@ -285,7 +427,7 @@ export const OverviewPage: React.FC = () => {
                 />
                 <Area
                   type="monotone"
-                  dataKey="errors"
+                  dataKey="spikes"
                   stroke="#ef4444"
                   fill="#ef4444"
                   fillOpacity={0.25}
@@ -295,118 +437,8 @@ export const OverviewPage: React.FC = () => {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        ) : (
-          <div className="h-56 flex flex-col items-center justify-center text-center p-6 space-y-3">
-            <FileCode2 className="w-10 h-10 text-neutral-400" />
-            <div>
-              <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
-                No Log Dataset Ingested
-              </h3>
-              <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                Upload your raw log file (.log, .txt, .csv, JSON) to run Drain3 template mining, 5-minute standard deviation spike detection, and 15-point RCA.
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setUploadModalOpen(true)}
-              icon={<UploadCloud className="w-3.5 h-3.5" />}
-            >
-              Upload First Log File
-            </Button>
-          </div>
-        )}
-      </Card>
-
-      {/* Active Incidents & Log Pattern RCA */}
-      <Card padding="none">
-        <div className="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <div>
-              <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                Active Incidents & Log Pattern Root Cause Analysis (15-Pt RCA)
-              </h2>
-              <p className="text-xs text-neutral-500">
-                Correlated disturbance cascades ranked by temporal precedence, frequency increase, and structural classification
-              </p>
-            </div>
-          </div>
-          {incidents.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/incidents')}>
-              View All ({incidents.length})
-            </Button>
-          )}
-        </div>
-
-        <div className="divide-y divide-neutral-100 dark:divide-neutral-850">
-          {incidents.slice(0, 5).map((inc) => {
-            const topCandidate = inc.rootCauseCandidates?.[0];
-            return (
-              <div
-                key={inc.id}
-                onClick={() => navigate(`/dashboard/incidents/${inc.id}`)}
-                className="p-4 hover:bg-neutral-50 dark:hover:bg-neutral-850 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div className="space-y-1.5 max-w-3xl">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-neutral-500">
-                      {inc.id.slice(0, 8)}
-                    </span>
-                    <StatusIndicator variant={inc.severity} label={inc.severity.toUpperCase()} />
-                    <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full uppercase font-medium ${
-                        inc.status === 'RESOLVED'
-                          ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
-                          : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400'
-                      }`}
-                    >
-                      {inc.status}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                    {inc.title}
-                  </h3>
-                  {topCandidate && (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-neutral-400 font-medium">Initiating Pattern:</span>
-                      <code className="px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 font-mono text-[11px] text-amber-700 dark:text-amber-400 truncate max-w-xl">
-                        {topCandidate.template}
-                      </code>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-4 shrink-0 text-xs">
-                  {topCandidate && (
-                    <div className="text-right">
-                      <div className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
-                        {(topCandidate.totalScore ?? 0).toFixed(1)} / 15 pts
-                      </div>
-                      <div className="text-[11px] text-neutral-400 font-mono">
-                        {inc.firstDetected}
-                      </div>
-                    </div>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-neutral-400" />
-                </div>
-              </div>
-            );
-          })}
-
-          {incidents.length === 0 && !loading && (
-            <div className="p-8 text-center space-y-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                All Application Baselines Operational
-              </h3>
-              <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-                No statistical error spikes or unhandled pattern cascades detected in this dataset.
-              </p>
-            </div>
-          )}
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Upload Log Modal */}
       <UploadLogModal

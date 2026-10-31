@@ -190,6 +190,24 @@ export const logService = {
   },
 
   /**
+   * Retrieves active log sources for the project
+   */
+  async getLogSources(projectId: string): Promise<any[]> {
+    if (!apiClient.isBackendConnected || !projectId) {
+      return [];
+    }
+    try {
+      const res = await apiClient.fetchEndpoint<{ items: any[] }>(
+        `/logs/${projectId}/sources?limit=5`
+      );
+      return res?.items || [];
+    } catch (err) {
+      console.warn(`Failed to fetch log sources for ${projectId}:`, err);
+      return [];
+    }
+  },
+
+  /**
    * Polls live ingestion/processing job status
    */
   async getProcessingJobs(projectId: string): Promise<ProcessingJob[]> {
