@@ -11,6 +11,8 @@ node_modules
 dist
 build
 *.tsbuildinfo
+.next/
+out/
 
 # Python
 __pycache__/

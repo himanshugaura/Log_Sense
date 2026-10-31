@@ -1,1 +1,11 @@
-{"dependencies":{"@neon/config":"^1.9.5","@neon/env":"^1.6.6"}}
+{
+  "name": "logsense",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LogSense — AI-Powered Incident Triage for Cloud Applications",
+  "scripts": {
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:processing": "cd backend/processing && .venv/Scripts/python -m uvicorn main:app --reload --port 8000",
+    "build:backend": "pnpm --filter backend build"
+  }
+}

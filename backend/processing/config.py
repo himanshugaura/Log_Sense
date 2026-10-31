@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 # Look for .env in current directory, then parent backend directory
 current_dir = Path(__file__).resolve().parent
-backend_env = current_dir.parent / "backend" / ".env"
+backend_env = current_dir.parent / ".env"
 local_env = current_dir / ".env"
 
 if local_env.exists():
