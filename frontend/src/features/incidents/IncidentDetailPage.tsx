@@ -21,12 +21,18 @@ import {
   ChevronRight,
   Binary,
   Info,
+  ExternalLink,
+  Copy,
+  Check,
+  X,
+  ArrowRight,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusIndicator } from '../../components/ui/Badge';
-import { Incident, IncidentStatus } from '../../types';
+import { Incident, IncidentStatus, LogEntry } from '../../types';
 import { incidentService } from '../../services/incident-service';
+import { logService } from '../../services/log-service';
 import { useProject } from '../../context/ProjectContext';
 
 const TRANSLATION_REFERENCE = [
@@ -100,6 +106,12 @@ export const IncidentDetailPage: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'rca' | 'timeline' | 'action_plan'>('rca');
   const [showTechEvidence, setShowTechEvidence] = useState(false);
+
+  // Matching errors modal state
+  const [matchingLogsOpen, setMatchingLogsOpen] = useState(false);
+  const [matchingLogs, setMatchingLogs] = useState<LogEntry[]>([]);
+  const [matchingLogsLoading, setMatchingLogsLoading] = useState(false);
+  const [copiedLogId, setCopiedLogId] = useState<string | null>(null);
 
   const fetchIncident = async () => {
     if (!id || !activeProjectId) return;
@@ -256,6 +268,24 @@ export const IncidentDetailPage: React.FC = () => {
   // Scoring data for technical drawer
   const rcaScore = topCandidate?.totalScore ?? 14;
 
+  const fetchMatchingLogs = async () => {
+    if (!activeProjectId) return;
+    setMatchingLogsLoading(true);
+    setMatchingLogsOpen(true);
+    try {
+      const res = await logService.getLogs(activeProjectId, {
+        clusterId: topCandidate?.clusterId,
+        query: cleanTemplate ? cleanTemplate.slice(0, 40) : undefined,
+        limit: 50,
+      });
+      setMatchingLogs(res.logs);
+    } catch (e) {
+      console.warn('Failed to fetch matching error logs:', e);
+    } finally {
+      setMatchingLogsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Top back navigation & status message banner */}
@@ -344,41 +374,71 @@ export const IncidentDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 4 Summary Metric Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1">
-          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
-            <div className="text-2xl sm:text-3xl font-bold font-sans text-rose-600 dark:text-rose-400">
-              {affectedPatternsCount}
+        {/* Summary Metric Cards (Total matching errors with link + Root cause candidates) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl sm:text-3xl font-bold font-sans text-neutral-900 dark:text-neutral-100">
+                  {totalMatchingErrors}
+                </div>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-rose-50 text-rose-700 dark:bg-rose-950/80 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 font-medium">
+                  Occurrences
+                </span>
+              </div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
+                Total matching errors
+              </div>
             </div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
-              Affected patterns
+
+            <div className="pt-3 mt-3 border-t border-neutral-200/60 dark:border-neutral-800/60 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={fetchMatchingLogs}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline cursor-pointer"
+              >
+                <span>View matching error logs ({totalMatchingErrors})</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+
+              <Link
+                to={`/dashboard/logs?query=${encodeURIComponent(cleanTemplate || displayTitle)}`}
+                className="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 inline-flex items-center gap-1"
+                title="Open in Log Explorer"
+              >
+                <span>Explore</span>
+                <ExternalLink className="w-3 h-3" />
+              </Link>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
-            <div className="text-2xl sm:text-3xl font-bold font-sans text-neutral-900 dark:text-neutral-100">
-              {detectionWindow}
+          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl sm:text-3xl font-bold font-sans text-amber-600 dark:text-amber-400">
+                  {candidateCount}
+                </div>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/80 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 font-medium">
+                  Ranked clusters
+                </span>
+              </div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
+                Root cause candidates
+              </div>
             </div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
-              Detection window
-            </div>
-          </div>
 
-          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
-            <div className="text-2xl sm:text-3xl font-bold font-sans text-neutral-900 dark:text-neutral-100">
-              {totalMatchingErrors}
-            </div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
-              Total matching errors
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
-            <div className="text-2xl sm:text-3xl font-bold font-sans text-amber-600 dark:text-amber-400">
-              {candidateCount}
-            </div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
-              Root cause candidates
+            <div className="pt-3 mt-3 border-t border-neutral-200/60 dark:border-neutral-800/60">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTechEvidence(true);
+                  setActiveTab('rca');
+                }}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+              >
+                <span>Inspect scoring breakdown</span>
+                <ArrowDown className="w-3 h-3" />
+              </button>
             </div>
           </div>
         </div>
@@ -841,6 +901,138 @@ export const IncidentDetailPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* =========================================================================
+          MODAL DIALOG: MATCHING ERROR LOGS
+          ========================================================================= */}
+      {matchingLogsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-4xl max-h-[85vh] rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-2xl flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                    Matching Error Logs
+                  </h3>
+                  <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/80 dark:text-rose-400 border border-rose-200 dark:border-rose-800 font-semibold">
+                    {matchingLogs.length > 0 ? `${matchingLogs.length} matching events` : `${totalMatchingErrors} reported occurrences`}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 font-mono truncate max-w-xl">
+                  {cleanTemplate || displayTitle}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link
+                  to={`/dashboard/logs?query=${encodeURIComponent(cleanTemplate || displayTitle)}`}
+                  className="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors inline-flex items-center gap-1.5"
+                >
+                  <span>Open in Log Explorer</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setMatchingLogsOpen(false)}
+                  className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+              {matchingLogsLoading ? (
+                <div className="py-16 text-center space-y-3">
+                  <RefreshCw className="w-6 h-6 animate-spin text-neutral-400 mx-auto" />
+                  <p className="text-xs text-neutral-500">Querying matching log occurrences...</p>
+                </div>
+              ) : matchingLogs.length === 0 ? (
+                <div className="py-12 text-center space-y-3">
+                  <p className="text-xs text-neutral-500">
+                    No individual log events loaded directly for pattern <code className="font-mono text-neutral-700 dark:text-neutral-300">"{cleanTemplate || displayTitle}"</code>.
+                  </p>
+                  <Link
+                    to={`/dashboard/logs?query=${encodeURIComponent(cleanTemplate || displayTitle)}`}
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <span>Search all raw logs in Log Explorer</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              ) : (
+                matchingLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850/60 space-y-2 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded uppercase tracking-wider ${
+                            log.level === 'ERROR' || log.level === 'FATAL'
+                              ? 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                              : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                          }`}
+                        >
+                          {log.level}
+                        </span>
+                        <span className="font-mono text-neutral-500 text-[11px]">
+                          {log.timestamp}
+                        </span>
+                        {log.serviceName && (
+                          <span className="text-[11px] font-mono text-neutral-400">
+                            [{log.serviceName}]
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(log.rawMessage || log.message);
+                          setCopiedLogId(log.id);
+                          setTimeout(() => setCopiedLogId(null), 1500);
+                        }}
+                        className="text-[11px] text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedLogId === log.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-500" />
+                            <span className="text-emerald-500 font-medium">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <p className="font-mono text-xs text-neutral-900 dark:text-neutral-100 break-words leading-relaxed">
+                      {log.message || log.rawMessage}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 flex items-center justify-between">
+              <span className="text-xs text-neutral-500">
+                Found {matchingLogs.length} events matching error signature
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setMatchingLogsOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
