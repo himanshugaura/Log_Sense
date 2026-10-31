@@ -86,10 +86,13 @@ export class AnomalyService {
     memoryCache.set(cacheKey, result, 20); // 20s TTL
     return result;
   }
-  }
 
   async getAnomalyById(projectId: string, anomalyId: string, userId: string) {
     await this.validateProjectOwnership(projectId, userId);
+
+    const cacheKey = `anomaly_detail:${projectId}:${anomalyId}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
 
     const anomaly = await prisma.anomaly.findFirst({
       where: { id: anomalyId, projectId },
@@ -109,6 +112,7 @@ export class AnomalyService {
       throw new ApiError(StatusCodes.NOT_FOUND, "Anomaly not found");
     }
 
+    memoryCache.set(cacheKey, anomaly, 20);
     return anomaly;
   }
 }
