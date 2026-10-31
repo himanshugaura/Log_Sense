@@ -7,7 +7,12 @@ const validatePart = (part: "body" | "params" | "query", input: ZodTypeAny) => {
       const parsed = await input.parseAsync(req[part]);
 
       if (part === "query") {
-        req.query = parsed as any;
+        Object.defineProperty(req, "query", {
+          value: parsed,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       } else if (part === "params") {
         req.params = parsed as Request["params"];
       } else {

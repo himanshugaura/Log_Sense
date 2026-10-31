@@ -75,14 +75,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsLoading(true);
     const orgIdToUse = targetOrgId || activeOrganizationId || undefined;
     try {
-      let list = await projectService.getProjects(orgIdToUse);
-      if (list.length === 0 && orgIdToUse) {
-        // Fallback: fetch all user projects in case stored org ID was stale
-        const allList = await projectService.getProjects();
-        if (allList.length > 0) {
-          list = allList;
-        }
-      }
+      const list = await projectService.getProjects(orgIdToUse);
       setProjects(list);
 
       if (list.length > 0) {

@@ -48,6 +48,10 @@ export const ProjectsPage: React.FC = () => {
 
   const currentOrg = organizations.find((o) => o.id === orgId) || activeOrganization;
 
+  const displayedProjects = orgId
+    ? projects.filter((p) => !p.organizationId || p.organizationId === orgId)
+    : projects;
+
   const handleSelectProject = (project: Project) => {
     selectProject(project.id);
     navigate(`/projects/${project.id}/services`);
@@ -127,9 +131,9 @@ export const ProjectsPage: React.FC = () => {
         )}
 
         {/* Projects Grid */}
-        {!loading && projects.length > 0 && (
+        {!loading && displayedProjects.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {projects.map((proj) => {
+            {displayedProjects.map((proj) => {
               const servicesCount = proj._count?.services ?? 0;
               return (
                 <Card
@@ -181,7 +185,7 @@ export const ProjectsPage: React.FC = () => {
         )}
 
         {/* Zero State */}
-        {!loading && projects.length === 0 && (
+        {!loading && displayedProjects.length === 0 && (
           <div className="py-12 px-6 rounded-2xl border-2 border-dashed border-neutral-200 dark:border-neutral-800 text-center max-w-lg mx-auto space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-850 mx-auto flex items-center justify-center text-neutral-600 dark:text-neutral-300">
               <FolderKanban className="w-6 h-6" />
@@ -194,6 +198,13 @@ export const ProjectsPage: React.FC = () => {
                 Create a project to register microservices and configure the dependency topology DAG.
               </p>
             </div>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
 
             <form onSubmit={handleCreate} className="space-y-3 pt-2 text-left">
               <div>
