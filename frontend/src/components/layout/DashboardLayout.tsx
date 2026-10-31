@@ -67,8 +67,7 @@ export const DashboardLayout: React.FC = () => {
     { label: 'Log Explorer', path: '/dashboard/logs', icon: FileCode2 },
     { label: 'Log Clusters', path: '/dashboard/clusters', icon: FolderTree },
     { label: 'Anomalies', path: '/dashboard/anomalies', icon: AlertTriangle },
-    { label: 'Incidents', path: '/dashboard/incidents', icon: Flame },
-    { label: 'Service Map', path: '/dashboard/service-map', icon: Network },
+    { label: 'Incidents & RCA', path: '/dashboard/incidents', icon: Flame },
     { label: 'Settings & Status', path: '/dashboard/settings', icon: Layers },
   ];
 
@@ -77,8 +76,7 @@ export const DashboardLayout: React.FC = () => {
     if (location.pathname.startsWith('/dashboard/logs')) return 'Log Explorer';
     if (location.pathname.startsWith('/dashboard/clusters')) return 'Log Clusters';
     if (location.pathname.startsWith('/dashboard/anomalies')) return 'Anomalies';
-    if (location.pathname.startsWith('/dashboard/incidents')) return 'Incidents';
-    if (location.pathname.startsWith('/dashboard/service-map')) return 'Service Map';
+    if (location.pathname.startsWith('/dashboard/incidents')) return 'Incidents & RCA';
     if (location.pathname.startsWith('/dashboard/settings')) return 'Settings & Status';
     return 'Dashboard';
   };

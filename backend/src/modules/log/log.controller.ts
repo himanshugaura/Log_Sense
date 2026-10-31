@@ -28,12 +28,12 @@ export class LogController {
     }
 
     const projectId = req.params.projectId as string;
-    const { serviceId, sourceType } = req.body;
+    const { serviceName, sourceType } = req.body;
 
     const result = await logService.uploadLogFile({
       userId,
       projectId,
-      serviceId: serviceId || null,
+      serviceName: serviceName || null,
       file: req.file,
       sourceType,
     });

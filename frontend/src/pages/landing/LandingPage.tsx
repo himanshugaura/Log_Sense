@@ -440,9 +440,9 @@ export const LandingPage: React.FC = () => {
                             {inc.title}
                           </p>
                           <div className="mt-2 flex items-center gap-3 text-xs text-neutral-500">
-                            <span>Root: {inc.suspectedRootCauseService}</span>
+                            <span className="truncate max-w-xs">Root: {inc.suspectedRootCauseTemplate || 'Drain3 Pattern'}</span>
                             <span aria-hidden="true">·</span>
-                            <span>{inc.affectedServices.length} affected services</span>
+                            <span>{inc.rootCauseCandidates?.length || 1} ranked candidates</span>
                           </div>
                         </div>
                       ))}

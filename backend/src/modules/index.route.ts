@@ -6,14 +6,12 @@ import incidentRoutes from "./incident/incident.route.js";
 import logRoutes from "./log/log.route.js";
 import organizationRoutes from "./organization/organization.route.js";
 import projectRoutes from "./project/project.route.js";
-import serviceRoutes from "./service/service.route.js";
 
 const router = Router();
 
 router.use("/auth", authRoutes);
 router.use("/organizations", organizationRoutes);
 router.use("/projects", projectRoutes);
-router.use("/services", serviceRoutes);
 router.use("/logs", logRoutes);
 router.use("/anomalies", anomalyRoutes);
 router.use("/incidents", incidentRoutes);

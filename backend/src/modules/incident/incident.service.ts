@@ -50,9 +50,10 @@ export class IncidentService {
                   title: true,
                   severity: true,
                   status: true,
-                  serviceId: true,
+                  serviceName: true,
                   firstDetectedAt: true,
-                  service: { select: { id: true, name: true } },
+                  evidence: true,
+                  cluster: { select: { id: true, template: true } },
                 },
               },
             },
@@ -63,8 +64,8 @@ export class IncidentService {
             include: {
               candidates: {
                 orderBy: { rank: "asc" },
-                take: 3,
-                include: { service: { select: { id: true, name: true } } },
+                take: 5,
+                include: { cluster: { select: { id: true, template: true } } },
               },
             },
           },
@@ -103,7 +104,6 @@ export class IncidentService {
           include: {
             anomaly: {
               include: {
-                service: { select: { id: true, name: true } },
                 cluster: { select: { id: true, template: true, occurrenceCount: true } },
               },
             },
@@ -115,7 +115,7 @@ export class IncidentService {
             candidates: {
               orderBy: { rank: "asc" },
               include: {
-                service: { select: { id: true, name: true, description: true } },
+                cluster: { select: { id: true, template: true, occurrenceCount: true } },
               },
             },
           },

@@ -48,8 +48,8 @@ export class ProjectService {
         },
         _count: {
           select: {
-            services: true,
             logSources: true,
+            logEntries: true,
             incidents: true,
             anomalies: true,
           },
@@ -84,7 +84,6 @@ export class ProjectService {
         },
         _count: {
           select: {
-            services: true,
             logSources: true,
             logEntries: true,
             anomalies: true,
@@ -113,8 +112,8 @@ export class ProjectService {
       const defaultProject = await prisma.project.create({
         data: {
           organizationId: org.id,
-          name: "Default Production",
-          description: "Default microservices project workspace",
+          name: "Default Workspace",
+          description: "Default log intelligence dataset workspace",
           timezone: "UTC",
         },
         include: {
@@ -126,7 +125,6 @@ export class ProjectService {
           },
           _count: {
             select: {
-              services: true,
               logSources: true,
               logEntries: true,
               anomalies: true,
@@ -156,28 +154,8 @@ export class ProjectService {
             ownerId: true,
           },
         },
-        services: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            createdAt: true,
-            _count: {
-              select: {
-                logSources: true,
-                anomalies: true,
-                outgoingDependencies: true,
-                incomingDependencies: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
         _count: {
           select: {
-            services: true,
             logSources: true,
             logEntries: true,
             anomalies: true,
@@ -226,7 +204,7 @@ export class ProjectService {
   }
 
   /**
-   * Deletes a project and all associated services, logs, and incidents (Cascade)
+   * Deletes a project and all associated logs, and incidents (Cascade)
    */
   async deleteProject(projectId: string, userId: string) {
     await this.getProjectById(projectId, userId);

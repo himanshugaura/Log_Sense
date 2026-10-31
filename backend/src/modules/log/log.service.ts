@@ -1,8 +1,8 @@
 import { StatusCodes } from "http-status-codes";
 
-import { prisma } from "../../core/config/db.js";
 import { env } from "../../core/config/env.js";
 import { logger } from "../../core/config/logger.js";
+import { prisma } from "../../core/config/db.js";
 import { storageService } from "../../core/services/storage.service.js";
 import ApiError from "../../shared/utils/ApiError.js";
 import type {
@@ -14,17 +14,14 @@ import type {
 
 export class LogService {
   /**
-   * Validates project existence and ensures caller owns the project
+   * Validates whether a project exists and is owned by the user
    */
   async validateProjectOwnership(projectId: string, userId: string) {
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
         organization: {
-          select: {
-            id: true,
-            ownerId: true,
-          },
+          select: { id: true, ownerId: true },
         },
       },
     });
@@ -46,40 +43,17 @@ export class LogService {
   async uploadLogFile(params: {
     userId: string;
     projectId: string;
-    serviceId?: string | null;
+    serviceName?: string | null;
     file: Express.Multer.File;
     sourceType?: string;
   }) {
     const project = await this.validateProjectOwnership(params.projectId, params.userId);
 
-    let serviceName: string | null = null;
-    let validatedServiceId: string | null = null;
-
-    if (params.serviceId && params.serviceId.trim() !== "") {
-      const service = await prisma.service.findFirst({
-        where: {
-          id: params.serviceId,
-          projectId: params.projectId,
-        },
-        select: { id: true, name: true },
-      });
-
-      if (!service) {
-        throw new ApiError(
-          StatusCodes.NOT_FOUND,
-          `Service with ID '${params.serviceId}' not found in this project`,
-        );
-      }
-
-      validatedServiceId = service.id;
-      serviceName = service.name;
-    }
-
-    // 1. Generate structured S3 key: logsense/{orgId}/{projectId}/{serviceName}/{timestamp}-{fileName}
+    // 1. Generate structured S3 key: logsense/{orgId}/{projectId}/logs/{timestamp}-{fileName}
     const storageKey = storageService.generateLogKey({
       organizationId: project.organization.id,
       projectId: project.id,
-      serviceName,
+      serviceName: params.serviceName || "logs",
       originalFileName: params.file.originalname,
     });
 
@@ -95,17 +69,12 @@ export class LogService {
       const source = await tx.logSource.create({
         data: {
           projectId: params.projectId,
-          serviceId: validatedServiceId,
+          serviceName: params.serviceName || null,
           name: params.file.originalname,
           sourceType: params.sourceType || "FILE_UPLOAD",
           fileKey: uploadResult.key,
           fileSize: params.file.size,
           fileType: params.file.mimetype || "text/plain",
-        },
-        include: {
-          service: {
-            select: { id: true, name: true },
-          },
         },
       });
 
@@ -126,7 +95,6 @@ export class LogService {
       jobId: processingJob.id,
       logSourceId: logSource.id,
       projectId: project.id,
-      serviceId: validatedServiceId,
       fileKey: uploadResult.key,
     }).catch((err) => {
       logger.warn(
@@ -152,7 +120,6 @@ export class LogService {
     jobId: string;
     logSourceId: string;
     projectId: string;
-    serviceId: string | null;
     fileKey: string;
   }): Promise<void> {
     const processingEndpoint = `${env.PROCESSING_SERVICE_URL}/api/v1/process`;
@@ -160,7 +127,6 @@ export class LogService {
     try {
       logger.info(`Dispatching processing request to Python service: ${processingEndpoint}`);
 
-      // Native fetch with timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -193,8 +159,8 @@ export class LogService {
     await this.validateProjectOwnership(projectId, userId);
 
     const where: any = { projectId };
-    if (query.serviceId) {
-      where.serviceId = query.serviceId;
+    if (query.search && query.search.trim().length > 0) {
+      where.name = { contains: query.search.trim(), mode: "insensitive" };
     }
 
     const page = Math.max(1, Number(query.page) || 1);
@@ -206,9 +172,6 @@ export class LogService {
       prisma.logSource.findMany({
         where,
         include: {
-          service: {
-            select: { id: true, name: true },
-          },
           processingJobs: {
             select: {
               id: true,
@@ -251,9 +214,6 @@ export class LogService {
     const logSource = await prisma.logSource.findFirst({
       where: { id: sourceId, projectId },
       include: {
-        service: {
-          select: { id: true, name: true },
-        },
         processingJobs: {
           orderBy: { createdAt: "desc" },
         },
@@ -291,7 +251,6 @@ export class LogService {
     const where: any = {
       parserState: {
         projectId,
-        ...(query.serviceId ? { serviceId: query.serviceId } : {}),
       },
     };
 
@@ -308,13 +267,6 @@ export class LogService {
       prisma.logCluster.findMany({
         where,
         include: {
-          parserState: {
-            select: {
-              id: true,
-              serviceId: true,
-              service: { select: { id: true, name: true } },
-            },
-          },
           _count: {
             select: { logEntries: true, anomalies: true },
           },
@@ -348,13 +300,6 @@ export class LogService {
         parserState: { projectId },
       },
       include: {
-        parserState: {
-          select: {
-            id: true,
-            serviceId: true,
-            service: { select: { id: true, name: true, description: true } },
-          },
-        },
         logEntries: {
           orderBy: { timestamp: "desc" },
           take: 15,
@@ -362,6 +307,7 @@ export class LogService {
             id: true,
             timestamp: true,
             level: true,
+            serviceName: true,
             rawMessage: true,
             normalizedMessage: true,
             traceId: true,
@@ -395,14 +341,14 @@ export class LogService {
 
     const where: any = { projectId };
 
-    if (query.serviceId) {
-      where.serviceId = query.serviceId;
-    }
     if (query.sourceId) {
       where.sourceId = query.sourceId;
     }
     if (query.clusterId) {
       where.clusterId = query.clusterId;
+    }
+    if (query.serviceName) {
+      where.serviceName = { contains: query.serviceName, mode: "insensitive" };
     }
     if (query.level) {
       where.level = { equals: query.level, mode: "insensitive" };
@@ -435,9 +381,6 @@ export class LogService {
       prisma.logEntry.findMany({
         where,
         include: {
-          service: {
-            select: { id: true, name: true },
-          },
           cluster: {
             select: { id: true, drainClusterId: true, template: true },
           },
@@ -483,7 +426,7 @@ export class LogService {
         where,
         include: {
           logSource: {
-            select: { id: true, name: true, fileKey: true, fileSize: true },
+            select: { id: true, name: true, sourceType: true },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -504,7 +447,7 @@ export class LogService {
   }
 
   /**
-   * Deletes a log source and its associated file in object storage
+   * Deletes a log source and its object storage file
    */
   async deleteLogSource(projectId: string, sourceId: string, userId: string) {
     await this.validateProjectOwnership(projectId, userId);
@@ -517,16 +460,12 @@ export class LogService {
       throw new ApiError(StatusCodes.NOT_FOUND, "Log source not found");
     }
 
-    // Delete object from S3 if fileKey exists
     if (logSource.fileKey) {
-      try {
-        await storageService.deleteFile(logSource.fileKey);
-      } catch (err) {
-        logger.warn(`Could not delete S3 object for log source ${sourceId}:`, err);
-      }
+      await storageService.deleteFile(logSource.fileKey).catch((err) => {
+        logger.warn(`Could not delete object storage file ${logSource.fileKey}: ${err.message}`);
+      });
     }
 
-    // Cascade deletes logEntries in database
     await prisma.logSource.delete({
       where: { id: sourceId },
     });

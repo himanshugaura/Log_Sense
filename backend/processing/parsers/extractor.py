@@ -5,24 +5,22 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 from dateutil import parser as date_parser
 
-# Common log level normalization
 LEVEL_MAP = {
+    "FATAL": "FATAL",
+    "CRIT": "CRITICAL",
+    "CRITICAL": "CRITICAL",
     "ERR": "ERROR",
     "ERRO": "ERROR",
     "ERROR": "ERROR",
-    "CRIT": "ERROR",
-    "CRITICAL": "ERROR",
-    "FATAL": "ERROR",
     "WARN": "WARN",
     "WARNING": "WARN",
     "INFO": "INFO",
     "INFORMATIONAL": "INFO",
     "DBG": "DEBUG",
     "DEBUG": "DEBUG",
-    "TRACE": "DEBUG",
+    "TRACE": "TRACE",
 }
 
-# Regex patterns
 TIMESTAMP_PATTERN = re.compile(
     r"^\[?(?P<ts>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\]?"
 )
@@ -33,7 +31,8 @@ LEVEL_PATTERN = re.compile(
 )
 
 SERVICE_PATTERN = re.compile(
-    r"\[(?P<service>[a-zA-Z0-9_\-\.]+)\]|service=(?P<service2>[a-zA-Z0-9_\-\.]+)|app=(?P<service3>[a-zA-Z0-9_\-\.]+)"
+    r"(?:service|app)[=:\s\"']+([a-zA-Z0-9_\-\.]+)|\[(?P<service>[a-zA-Z0-9_\-\.]+)\]",
+    re.IGNORECASE
 )
 
 TRACE_ID_PATTERN = re.compile(
@@ -46,12 +45,18 @@ SPAN_ID_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-# Normalization patterns for dynamic variables
-RE_IPV4 = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?\b")
-RE_UUID = re.compile(r"\b[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}\b")
-RE_HEX = re.compile(r"\b0x[a-fA-F0-9]+\b|\b[a-fA-F0-9]{16,64}\b")
-RE_URL = re.compile(r"https?://[^\s'\"]+")
-RE_NUMBERS = re.compile(r"(?<=\s|=|-|/|#)\d+(?=\s|,|;|\.|$|/|#)")
+# Robust variable masking for Drain3 clustering
+RE_MASKS = [
+    (re.compile(r"https?://[^\s'\"]+"), "<*>"),
+    (re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?\b"), "<*>"), # IPv4:port
+    (re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b"), "<*>"), # IPv6
+    (re.compile(r"/[a-zA-Z0-9_\-\.\/]+"), "<*>"), # file paths & leading /IPs
+    (re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"), "<*>"), # UUID
+    (re.compile(r"\b0x[0-9a-fA-F]+\b|\b[0-9a-fA-F]{8,64}\b"), "<*>"), # hex hashes & memory addresses
+    (re.compile(r"(?<=[^\w])[-+]?\d+(?=[^\w]|$)"), "<*>"), # standalone integers
+    (re.compile(r"^[-+]?\d+"), "<*>"),
+    (re.compile(r"[-+]?\d+$"), "<*>"),
+]
 
 @dataclass
 class ExtractedLogRecord:
@@ -65,27 +70,30 @@ class ExtractedLogRecord:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 def normalize_text(text: str) -> str:
-    """Replaces dynamic variables (IPs, UUIDs, numbers, URLs) with standard <*> wildcard."""
-    text = RE_URL.sub("<*>", text)
-    text = RE_IPV4.sub("<*>", text)
-    text = RE_UUID.sub("<*>", text)
-    text = RE_HEX.sub("<*>", text)
-    text = RE_NUMBERS.sub("<*>", text)
-    return text.strip()
+    """Masks dynamic parameters with standard <*> placeholder."""
+    norm = text
+    for pattern, repl in RE_MASKS:
+        norm = pattern.sub(repl, norm)
+    # Collapse repetitive <*> tokens
+    norm = re.sub(r"(<\*>[\s,;:=-]*)+<\*>", "<*>", norm)
+    return norm.strip()
 
 def parse_timestamp(val: Any) -> datetime:
-    """Converts a string or epoch number into a timezone-aware UTC datetime."""
+    """Converts a string or epoch number into UTC datetime."""
     if isinstance(val, (int, float)):
-        # Epoch seconds or milliseconds
         if val > 1e11:
             val = val / 1000.0
         return datetime.fromtimestamp(val, tz=timezone.utc)
 
     if isinstance(val, str):
         try:
-            dt = date_parser.parse(val)
+            # Handle ISO or standard formats like "2015-07-29 17:41:44,747"
+            clean_str = val.replace(",", ".")
+            dt = date_parser.parse(clean_str)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
             return dt
         except Exception:
             pass
@@ -94,8 +102,9 @@ def parse_timestamp(val: Any) -> datetime:
 
 def extract_log_record(raw_line: str, fallback_service_name: Optional[str] = None) -> ExtractedLogRecord:
     """
-    Parses an individual log line (JSON or plaintext) and extracts structured fields
-    (timestamp, level, service, message, trace_id, span_id, normalized_message).
+    Parses a log line (plaintext or JSON) into structured components.
+    Ensures that the normalized_message contains the true semantic content
+    free of header prefixes, so Drain3 produces high-accuracy clusters.
     """
     line = raw_line.strip()
     if not line:
@@ -112,32 +121,24 @@ def extract_log_record(raw_line: str, fallback_service_name: Optional[str] = Non
         try:
             data = json.loads(line)
             if isinstance(data, dict):
-                # Extract timestamp
                 raw_ts = data.get("timestamp") or data.get("time") or data.get("@timestamp") or data.get("datetime")
                 ts = parse_timestamp(raw_ts)
 
-                # Extract level
                 raw_level = str(data.get("level") or data.get("severity") or data.get("log_level") or "INFO").upper()
                 level = LEVEL_MAP.get(raw_level, "INFO")
 
-                # Extract service
                 service = data.get("service") or data.get("service_name") or data.get("app") or fallback_service_name
-
-                # Extract message
                 raw_msg = str(data.get("message") or data.get("msg") or data.get("log") or line)
 
-                # Extract trace & span
                 trace_id = data.get("traceId") or data.get("trace_id") or data.get("trace")
                 span_id = data.get("spanId") or data.get("span_id") or data.get("span")
 
-                # Remaining fields as metadata
                 metadata = {
                     k: v for k, v in data.items()
                     if k not in {"timestamp", "time", "@timestamp", "datetime", "level", "severity", "service", "message", "msg"}
                 }
 
                 normalized = normalize_text(raw_msg)
-
                 return ExtractedLogRecord(
                     timestamp=ts,
                     level=level,
@@ -151,7 +152,9 @@ def extract_log_record(raw_line: str, fallback_service_name: Optional[str] = Non
         except Exception:
             pass
 
-    # 2. Plaintext Parsing
+    # 2. Plaintext Parsing with Clean Component Extraction
+    # Handles: "2015-07-29 17:41:44,747 - INFO  [QuorumPeer...:FastLeaderElection@774] - Notification time out: 3200"
+    # as well as: "2024-01-01 12:00:00 [ERROR] Database connection failed"
     timestamp = datetime.now(timezone.utc)
     ts_match = TIMESTAMP_PATTERN.search(line)
     remaining = line
@@ -161,20 +164,29 @@ def extract_log_record(raw_line: str, fallback_service_name: Optional[str] = Non
         timestamp = parse_timestamp(ts_str)
         remaining = line[ts_match.end():].strip()
 
-    # Extract level
+    # Strip optional leading delimiter (e.g. " - ")
+    remaining = re.sub(r"^[ \t]*-[ \t]*", "", remaining).strip()
+
+    # Extract log level
     level = "INFO"
     lvl_match = LEVEL_PATTERN.search(remaining)
     if lvl_match:
         raw_lvl = lvl_match.group("level").upper()
         level = LEVEL_MAP.get(raw_lvl, "INFO")
+        # Remove level token from the beginning if present
+        if remaining.upper().startswith(raw_lvl):
+            remaining = remaining[len(raw_lvl):].strip()
 
-    # Extract service name
+    # Strip optional delimiter after level
+    remaining = re.sub(r"^[ \t]*-[ \t]*", "", remaining).strip()
+
+    # Extract optional service name from plaintext if present
     service = fallback_service_name
-    for svc_match in SERVICE_PATTERN.finditer(remaining):
-        detected_svc = svc_match.group("service") or svc_match.group("service2") or svc_match.group("service3")
-        if detected_svc and detected_svc.upper() not in LEVEL_MAP:
-            service = detected_svc
-            break
+    svc_match = SERVICE_PATTERN.search(remaining)
+    if svc_match:
+        found_svc = svc_match.group(1) or svc_match.group("service")
+        if found_svc and found_svc.upper() not in LEVEL_MAP and len(found_svc) < 32:
+            service = found_svc
 
     # Extract trace / span ID
     trace_id = None
@@ -182,32 +194,35 @@ def extract_log_record(raw_line: str, fallback_service_name: Optional[str] = Non
     tr_match = TRACE_ID_PATTERN.search(remaining)
     if tr_match:
         trace_id = tr_match.group(1)
-
     sp_match = SPAN_ID_PATTERN.search(remaining)
     if sp_match:
         span_id = sp_match.group(1)
 
-    # Clean message body by stripping leading [LEVEL] and [SERVICE] prefixes
-    msg_body = remaining
-    while True:
-        stripped = False
-        bracket_match = re.match(r"^\[(?P<token>[a-zA-Z0-9_\-\.]+)\]\s*", msg_body)
-        if bracket_match:
-            tok = bracket_match.group("token")
-            if tok.upper() in LEVEL_MAP or (service and tok.lower() == service.lower()):
-                msg_body = msg_body[bracket_match.end():]
-                stripped = True
-        if not stripped:
-            break
+    # Strip bracketed logger/thread prefix (e.g. "[QuorumPeer...:FastLeaderElection@774] - ")
+    logger_header = None
+    bracket_match = re.match(r"^\[(?P<header>.*?)\](?:\s*-\s*|\s+)", remaining)
+    if bracket_match:
+        logger_header = bracket_match.group("header")
+        remaining = remaining[bracket_match.end():].strip()
+    elif remaining.startswith("[") and "]" in remaining:
+        # Handle cases with nested brackets like [QuorumPeer[myid=1]/...]
+        last_bracket_idx = remaining.rfind("]")
+        if last_bracket_idx != -1 and last_bracket_idx < len(remaining) - 1:
+            after_bracket = remaining[last_bracket_idx + 1:].strip()
+            if after_bracket.startswith("-"):
+                after_bracket = after_bracket[1:].strip()
+            if len(after_bracket) > 0:
+                logger_header = remaining[1:last_bracket_idx]
+                remaining = after_bracket
 
-    # Also clean loose level keywords at the start of msg_body
-    if lvl_match and msg_body.upper().startswith(level):
-        msg_body = msg_body[len(level):].strip(" :-\t")
-
-    if not msg_body:
-        msg_body = line
+    # If message is still empty, fall back to line
+    msg_body = remaining if remaining else line
 
     normalized = normalize_text(msg_body)
+
+    metadata: Dict[str, Any] = {}
+    if logger_header:
+        metadata["logger"] = logger_header
 
     return ExtractedLogRecord(
         timestamp=timestamp,
@@ -217,5 +232,5 @@ def extract_log_record(raw_line: str, fallback_service_name: Optional[str] = Non
         normalized_message=normalized,
         trace_id=trace_id,
         span_id=span_id,
-        metadata={},
+        metadata=metadata,
     )

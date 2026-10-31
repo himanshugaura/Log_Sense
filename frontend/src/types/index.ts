@@ -24,11 +24,11 @@ export interface Project {
     name: string;
   };
   _count?: {
-    services?: number;
     logSources?: number;
     logEntries?: number;
     anomalies?: number;
     incidents?: number;
+    services?: number;
   };
 }
 
@@ -49,10 +49,12 @@ export interface ProcessingJob {
 export interface LogEntry {
   id: string;
   timestamp: string;
-  service: string;
   level: LogLevel;
   message: string;
-  clusterId: string;
+  serviceName?: string;
+  service?: string;
+  clusterId?: string;
+  clusterTemplate?: string;
   dataset?: string;
   traceId?: string;
   spanId?: string;
@@ -65,7 +67,8 @@ export interface LogCluster {
   template: string;
   occurrenceCount: number;
   severity: LogLevel;
-  service: string;
+  service?: string;
+  serviceName?: string;
   firstSeen: string;
   lastSeen: string;
   sampleLogs: string[];
@@ -75,11 +78,11 @@ export interface LogCluster {
 }
 
 export type AnomalyType = 
+  | 'SPIKE' 
+  | 'NEW_PATTERN' 
   | 'error_spike' 
   | 'volume_surge' 
-  | 'new_template' 
-  | 'timeout_cascade' 
-  | 'pattern_deviation';
+  | 'new_template';
 
 export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low';
 
@@ -87,52 +90,62 @@ export interface Anomaly {
   id: string;
   timestamp: string;
   title: string;
-  type: AnomalyType;
-  service: string;
+  type: string;
   severity: SeverityLevel;
   observedValue: number | string;
   expectedBaseline: number | string;
   unit: string;
-  clusterId: string;
+  service?: string;
+  serviceName?: string;
+  clusterId?: string;
+  clusterTemplate?: string;
   relatedIncidentId?: string;
   description: string;
-  sampleLogs: LogEntry[];
+  points?: number;
+  zScore?: number;
+  sampleLogs?: any[];
+  evidence?: any;
+  affectedClusters?: Array<{
+    clusterId: string;
+    template: string;
+    baselineMean: number;
+    currentCount: number;
+    zScore: number;
+    firstAbnormalAt: string;
+  }>;
 }
 
 export type IncidentStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED';
 
 export interface RootCauseCandidate {
-  service: string;
-  confidenceScore: number; // 0 - 100
-  reasoning: string;
-  supportingEvidence: string[];
-  relatedAnomalies: string[];
-  relatedClusters: string[];
-  suggestedRemediation: string[];
-  breakdown?: {
-    temporalScore?: number;
-    centralityScore?: number;
-    volumeScore?: number;
-    noveltyScore?: number;
-  };
+  clusterId?: string;
+  template?: string;
+  service?: string;
+  totalScore?: number; // 0 - 15 points
+  temporalPoints?: number; // 0 - 4
+  frequencyPoints?: number; // 0 - 4
+  classificationPoints?: number; // 0 - 3
+  relationshipPoints?: number; // 0 - 4
+  explanation?: string;
+  reasoning?: string;
+  confidenceScore?: number;
+  supportingEvidence?: string[];
+  suggestedRemediation?: string[];
+  relatedAnomalies?: any[];
+  relatedClusters?: any[];
+  rank?: number;
+  evidence?: any;
 }
 
 export interface CorrelatedTimelineEvent {
   id: string;
   time: string;
-  service: string;
   event: string;
   severity: SeverityLevel;
-  evidenceType: 'anomaly' | 'cluster' | 'log' | 'metric';
-  evidenceRef: string;
   description: string;
-}
-
-export interface ChecklistItem {
-  id: string;
-  text: string;
-  completed: boolean;
-  category: 'triage' | 'mitigation' | 'verification';
+  service?: string;
+  evidenceType?: string;
+  evidenceRef?: string;
 }
 
 export interface Incident {
@@ -140,56 +153,21 @@ export interface Incident {
   title: string;
   severity: SeverityLevel;
   status: IncidentStatus;
-  suspectedRootCauseService: string;
-  affectedServices: string[];
+  suspectedRootCauseTemplate?: string;
+  suspectedRootCauseService?: string;
+  affectedServices?: string[];
   firstDetected: string;
   lastUpdated: string;
   aiSummary: string;
   rootCauseCandidates: RootCauseCandidate[];
   correlatedTimeline: CorrelatedTimelineEvent[];
-  investigationChecklist: ChecklistItem[];
-  evidenceLogs: LogEntry[];
-}
-
-export interface ServiceNodeData {
-  id: string;
-  name: string;
-  category: 'gateway' | 'service' | 'database' | 'cache' | 'queue';
-  status: 'healthy' | 'degraded' | 'critical';
-  errorRate: number;
-  p99LatencyMs: number;
-  requestRps: number;
-  dependencies: string[];
-  activeIncidentId?: string;
-  errorCount: number;
-  protocol?: string;
-}
-
-export interface DependencyGraphNode {
-  id: string;
-  name: string;
-  description?: string | null;
-  anomaliesCount: number;
-  logEntriesCount: number;
-  createdAt: string;
-}
-
-export interface DependencyGraphEdge {
-  id: string;
-  source: string;
-  target: string;
-  sourceName: string;
-  targetName: string;
-  dependencyType: string;
-  isRequired: boolean;
-}
-
-export interface DependencyGraph {
-  projectId: string;
-  totalServices: number;
-  totalDependencies: number;
-  nodes: DependencyGraphNode[];
-  edges: DependencyGraphEdge[];
+  evidenceLogs?: any[];
+  investigationChecklist?: Array<{
+    id: string;
+    text: string;
+    completed: boolean;
+    category?: string;
+  }>;
 }
 
 export interface DashboardMetrics {
@@ -197,7 +175,7 @@ export interface DashboardMetrics {
   errorEvents: number;
   detectedAnomalies: number;
   activeIncidents: number;
-  monitoredServices: number;
+  monitoredServices?: number;
   errorRatePercentage: number;
   anomalousClusterCount: number;
 }
@@ -213,4 +191,17 @@ export interface PublicDataset {
   totalEvents: number;
   systemType: string;
   recommendedFor: string;
+}
+
+export interface ServiceNodeData {
+  id: string;
+  name: string;
+  description?: string;
+  status?: string;
+  health?: string;
+  errorRate?: number;
+  category?: string;
+  anomalyCount?: number;
+  logCount?: number;
+  [key: string]: any;
 }

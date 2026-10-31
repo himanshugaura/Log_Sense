@@ -15,35 +15,26 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { StatusIndicator } from '../../components/ui/Badge';
-import { LogCluster, ServiceNodeData } from '../../types';
+import { LogCluster } from '../../types';
 import { logService } from '../../services/log-service';
-import { serviceMapService } from '../../services/service-map-service';
 import { useProject } from '../../context/ProjectContext';
 
 export const LogClustersPage: React.FC = () => {
   const { activeProjectId } = useProject();
 
   const [clusters, setClusters] = useState<LogCluster[]>([]);
-  const [services, setServices] = useState<ServiceNodeData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedService, setSelectedService] = useState('all');
   const [selectedSeverity, setSelectedSeverity] = useState('all');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
   const [copiedTemplate, setCopiedTemplate] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!activeProjectId) return;
-    serviceMapService.getServices(activeProjectId).then(setServices).catch(console.warn);
-  }, [activeProjectId]);
 
   const loadClusters = async () => {
     if (!activeProjectId) return;
     setLoading(true);
     try {
       const data = await logService.getLogClusters(activeProjectId, {
-        service: selectedService,
         level: selectedSeverity,
         query: searchQuery,
       });
@@ -65,7 +56,7 @@ export const LogClustersPage: React.FC = () => {
 
   useEffect(() => {
     loadClusters();
-  }, [activeProjectId, searchQuery, selectedService, selectedSeverity, sortOrder]);
+  }, [activeProjectId, searchQuery, selectedSeverity, sortOrder]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -105,7 +96,7 @@ export const LogClustersPage: React.FC = () => {
             Log Template Clusters
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Automated template clustering groups recurring log lines into reusable structured patterns.
+            Automated Drain3 clustering parses recurring log lines into reusable structured patterns with wildcard tokens.
           </p>
         </div>
 
@@ -128,7 +119,7 @@ export const LogClustersPage: React.FC = () => {
       {/* Filter and Search Bar */}
       <Card padding="md">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-          <div className="sm:col-span-6">
+          <div className="sm:col-span-8">
             <Input
               placeholder="Search template text or cluster ID..."
               value={searchQuery}
@@ -137,22 +128,7 @@ export const LogClustersPage: React.FC = () => {
             />
           </div>
 
-          <div className="sm:col-span-3">
-            <select
-              value={selectedService}
-              onChange={(e) => setSelectedService(e.target.value)}
-              className="w-full h-10.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 text-xs sm:text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-neutral-900 dark:focus:border-neutral-100"
-            >
-              <option value="all">All Services ({services.length})</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="sm:col-span-3 flex items-center gap-2">
+          <div className="sm:col-span-4 flex items-center gap-2">
             <select
               value={selectedSeverity}
               onChange={(e) => setSelectedSeverity(e.target.value)}
@@ -162,6 +138,7 @@ export const LogClustersPage: React.FC = () => {
               <option value="ERROR">ERROR</option>
               <option value="WARN">WARN</option>
               <option value="INFO">INFO</option>
+              <option value="DEBUG">DEBUG</option>
             </select>
 
             <button
@@ -181,7 +158,6 @@ export const LogClustersPage: React.FC = () => {
       <div className="space-y-3">
         {clusters.map((cluster) => {
           const isExpanded = expandedClusterId === cluster.id;
-          const isError = cluster.severity === 'ERROR';
 
           return (
             <Card
@@ -211,9 +187,6 @@ export const LogClustersPage: React.FC = () => {
                         {cluster.id.slice(0, 12)}
                       </span>
                       <StatusIndicator variant={cluster.severity} label={cluster.severity} />
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
-                        {cluster.service}
-                      </span>
                       {cluster.anomalyScore > 0.6 && (
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400 font-bold uppercase">
                           Anomaly Burst Tagged

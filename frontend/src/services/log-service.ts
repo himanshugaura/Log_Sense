@@ -2,18 +2,17 @@ import { LogEntry, LogCluster, ProcessingJob } from '../types';
 import { apiClient } from './api/client';
 
 export interface LogFilterOptions {
-  service?: string;
   level?: string;
   query?: string;
   clusterId?: string;
+  serviceName?: string;
   page?: number;
   limit?: number;
 }
 
 export interface ClusterFilterOptions {
-  service?: string;
-  level?: string;
   query?: string;
+  level?: string;
   page?: number;
   limit?: number;
 }
@@ -39,9 +38,6 @@ export const logService = {
 
     try {
       const queryParams = new URLSearchParams();
-      if (filters?.service && filters.service !== 'all') {
-        queryParams.set('serviceId', filters.service);
-      }
       if (filters?.level && filters.level !== 'all') {
         queryParams.set('level', filters.level.toUpperCase());
       }
@@ -51,6 +47,9 @@ export const logService = {
       if (filters?.clusterId) {
         queryParams.set('clusterId', filters.clusterId);
       }
+      if (filters?.serviceName) {
+        queryParams.set('serviceName', filters.serviceName);
+      }
       queryParams.set('page', String(filters?.page || 1));
       queryParams.set('limit', String(filters?.limit || 50));
 
@@ -59,9 +58,9 @@ export const logService = {
           id: string;
           timestamp: string;
           level: string;
+          serviceName?: string;
           normalizedMessage: string;
           rawMessage: string;
-          service?: { id: string; name: string };
           cluster?: { id: string; template: string };
           metadata?: any;
         }>;
@@ -72,10 +71,11 @@ export const logService = {
         const mapped: LogEntry[] = res.items.map((entry) => ({
           id: entry.id,
           timestamp: new Date(entry.timestamp).toISOString().slice(0, 19).replace('T', ' '),
-          service: entry.service?.name || 'unknown-service',
+          serviceName: entry.serviceName || undefined,
           level: (entry.level?.toUpperCase() as any) || 'INFO',
           message: entry.normalizedMessage || entry.rawMessage,
           clusterId: entry.cluster?.id || 'cluster-gen',
+          clusterTemplate: entry.cluster?.template,
           isAnomaly: entry.level?.toUpperCase() === 'ERROR',
           metadata: entry.metadata || undefined,
         }));
@@ -98,9 +98,6 @@ export const logService = {
 
     try {
       const queryParams = new URLSearchParams();
-      if (filters?.service && filters.service !== 'all') {
-        queryParams.set('serviceId', filters.service);
-      }
       if (filters?.query && filters.query.trim()) {
         queryParams.set('search', filters.query.trim());
       }
@@ -110,13 +107,11 @@ export const logService = {
       const res = await apiClient.fetchEndpoint<{
         items: Array<{
           id: string;
-          drainClusterId: number;
           template: string;
           occurrenceCount: number;
           firstSeenAt: string;
           lastSeenAt: string;
-          parserState?: { service?: { id: string; name: string } };
-          _count?: { anomalies?: number };
+          _count?: { logEntries?: number; anomalies?: number };
         }>;
       }>(`/logs/${projectId}/clusters?${queryParams.toString()}`);
 
@@ -125,8 +120,7 @@ export const logService = {
           id: c.id,
           template: c.template,
           occurrenceCount: c.occurrenceCount,
-          severity: c.template.includes('ERROR') || (c._count?.anomalies ?? 0) > 0 ? 'ERROR' : 'INFO',
-          service: c.parserState?.service?.name || 'system',
+          severity: c.template.includes('ERROR') ? 'ERROR' : c.template.includes('WARN') ? 'WARN' : 'INFO',
           firstSeen: new Date(c.firstSeenAt).toISOString().slice(0, 19).replace('T', ' '),
           lastSeen: new Date(c.lastSeenAt).toISOString().slice(0, 19).replace('T', ' '),
           sampleLogs: [c.template],
@@ -155,7 +149,6 @@ export const logService = {
           occurrenceCount: number;
           firstSeenAt: string;
           lastSeenAt: string;
-          parserState?: { service?: { name: string } };
           logEntries?: Array<{ rawMessage: string }>;
         };
       }>(`/logs/${projectId}/clusters/${clusterId}`);
@@ -166,8 +159,7 @@ export const logService = {
           id: c.id,
           template: c.template,
           occurrenceCount: c.occurrenceCount,
-          severity: c.template.includes('ERROR') ? 'ERROR' : 'INFO',
-          service: c.parserState?.service?.name || 'system',
+          severity: c.template.includes('ERROR') ? 'ERROR' : c.template.includes('WARN') ? 'WARN' : 'INFO',
           firstSeen: new Date(c.firstSeenAt).toISOString().slice(0, 19).replace('T', ' '),
           lastSeen: new Date(c.lastSeenAt).toISOString().slice(0, 19).replace('T', ' '),
           sampleLogs: c.logEntries?.map((e) => e.rawMessage) || [c.template],
@@ -184,15 +176,11 @@ export const logService = {
 
   /**
    * Real multipart file upload directly to backend object storage
-   * POST /api/v1/logs/:projectId/upload
    */
-  async uploadLogFile(projectId: string, file: File, serviceId?: string): Promise<UploadLogResponse> {
+  async uploadLogFile(projectId: string, file: File): Promise<UploadLogResponse> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('sourceType', 'FILE_UPLOAD');
-    if (serviceId && serviceId !== 'all' && serviceId.trim() !== '') {
-      formData.append('serviceId', serviceId.trim());
-    }
 
     const res = await apiClient.uploadFile<UploadLogResponse>(
       `/logs/${projectId}/upload`,
@@ -203,7 +191,6 @@ export const logService = {
 
   /**
    * Polls live ingestion/processing job status
-   * GET /api/v1/logs/:projectId/jobs
    */
   async getProcessingJobs(projectId: string): Promise<ProcessingJob[]> {
     if (!apiClient.isBackendConnected || !projectId) {

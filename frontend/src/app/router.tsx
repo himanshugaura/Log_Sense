@@ -8,12 +8,9 @@ import { LogClustersPage } from '../features/log-clusters/LogClustersPage';
 import { AnomaliesPage } from '../features/anomalies/AnomaliesPage';
 import { IncidentsPage } from '../features/incidents/IncidentsPage';
 import { IncidentDetailPage } from '../features/incidents/IncidentDetailPage';
-import { ServiceMapPage } from '../features/service-map/ServiceMapPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { OrganizationsPage } from '../features/organizations/OrganizationsPage';
 import { ProjectsPage } from '../features/projects/ProjectsPage';
-import { ServicesPage } from '../features/services/ServicesPage';
-import { DependencyGraphConfigPage } from '../features/services/DependencyGraphConfigPage';
 
 export const router = createBrowserRouter([
   {
@@ -30,17 +27,7 @@ export const router = createBrowserRouter([
     path: '/organizations/:orgId/projects',
     element: <ProjectsPage />,
   },
-  // Step 3: Microservices
-  {
-    path: '/projects/:projectId/services',
-    element: <ServicesPage />,
-  },
-  // Step 4: Dependency Graph Configuration
-  {
-    path: '/projects/:projectId/dependency-graph',
-    element: <DependencyGraphConfigPage />,
-  },
-  // Step 5: Advanced AI Incident Triage, RCA & Telemetry Console
+  // Main Dashboard: Statistical Anomaly Detection & Point-Based RCA
   {
     path: '/dashboard',
     element: <DashboardLayout />,
@@ -68,10 +55,6 @@ export const router = createBrowserRouter([
       {
         path: 'incidents/:id',
         element: <IncidentDetailPage />,
-      },
-      {
-        path: 'service-map',
-        element: <ServiceMapPage />,
       },
       {
         path: 'settings',

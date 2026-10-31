@@ -30,13 +30,13 @@ export class AnomalyService {
     await this.validateProjectOwnership(projectId, userId);
 
     const where: any = { projectId };
-    if (query.serviceId) where.serviceId = query.serviceId;
     if (query.severity) where.severity = query.severity;
     if (query.status) where.status = query.status;
     if (query.anomalyType) where.anomalyType = query.anomalyType;
+    if (query.clusterId) where.clusterId = query.clusterId;
 
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.max(1, Number(query.limit) || 20);
+    const limit = Math.max(1, Number(query.limit) || 50);
     const skip = (page - 1) * limit;
 
     const [total, items] = await Promise.all([
@@ -44,9 +44,6 @@ export class AnomalyService {
       prisma.anomaly.findMany({
         where,
         include: {
-          service: {
-            select: { id: true, name: true },
-          },
           cluster: {
             select: { id: true, template: true, occurrenceCount: true },
           },
@@ -81,9 +78,6 @@ export class AnomalyService {
     const anomaly = await prisma.anomaly.findFirst({
       where: { id: anomalyId, projectId },
       include: {
-        service: {
-          select: { id: true, name: true, description: true },
-        },
         cluster: {
           select: { id: true, template: true, occurrenceCount: true, firstSeenAt: true, lastSeenAt: true },
         },

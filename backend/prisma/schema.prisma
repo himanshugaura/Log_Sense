@@ -46,7 +46,6 @@ model Project {
   createdAt      DateTime @default(now())
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  services       Service[]
   logSources     LogSource[]
   logEntries     LogEntry[]
   parserStates   ParserState[]
@@ -59,77 +58,34 @@ model Project {
 }
 
 // ==========================================
-// SERVICES
-// ==========================================
-
-model Service {
-  id          String   @id @default(uuid())
-  projectId   String
-  name        String
-  description String?  @db.Text
-  createdAt   DateTime @default(now())
-
-  project              Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  outgoingDependencies ServiceDependency[]  @relation("SourceServiceDependencies")
-  incomingDependencies ServiceDependency[]  @relation("TargetServiceDependencies")
-  logSources           LogSource[]
-  logEntries           LogEntry[]
-  parserStates         ParserState[]
-  anomalies            Anomaly[]
-  rootCauseCandidates  RootCauseCandidate[]
-
-  @@unique([projectId, name])
-  @@index([projectId])
-  @@map("services")
-}
-
-model ServiceDependency {
-  id              String  @id @default(uuid())
-  sourceServiceId String
-  targetServiceId String
-  dependencyType  String
-  isRequired      Boolean @default(true)
-
-  sourceService Service @relation("SourceServiceDependencies", fields: [sourceServiceId], references: [id], onDelete: Cascade)
-  targetService Service @relation("TargetServiceDependencies", fields: [targetServiceId], references: [id], onDelete: Cascade)
-
-  @@unique([sourceServiceId, targetServiceId])
-  @@index([sourceServiceId])
-  @@index([targetServiceId])
-  @@map("service_dependencies")
-}
-
-// ==========================================
 // LOG INGESTION
 // ==========================================
 
 model LogSource {
-  id         String   @id @default(uuid())
-  projectId  String
-  serviceId  String?
-  name       String
-  sourceType String   @default("FILE_UPLOAD")
-  fileKey    String?
-  fileSize   Int?
-  fileType   String?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  sourceType  String   @default("FILE_UPLOAD")
+  serviceName String?
+  fileKey     String?
+  fileSize    Int?
+  fileType    String?
+  createdAt   DateTime @default(now())
 
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service        Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   logEntries     LogEntry[]
   processingJobs ProcessingJob[]
 
   @@index([projectId])
-  @@index([serviceId])
   @@map("log_sources")
 }
 
 model LogEntry {
   id                String   @id @default(uuid())
   projectId         String
-  serviceId         String?
   sourceId          String
   clusterId         String?
+  serviceName       String?
   timestamp         DateTime
   level             String
   rawMessage        String   @db.Text
@@ -139,12 +95,10 @@ model LogEntry {
   metadata          Json?
 
   project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service Service?    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   source  LogSource   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   cluster LogCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
 
   @@index([projectId, timestamp])
-  @@index([serviceId, timestamp])
   @@index([clusterId])
   @@index([level])
   @@index([traceId])
@@ -157,17 +111,14 @@ model LogEntry {
 
 model ParserState {
   id        String   @id @default(uuid())
-  projectId String
-  serviceId String?
+  projectId String   @unique
   stateData String   @db.Text
   updatedAt DateTime @updatedAt
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service     Service?     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   logClusters LogCluster[]
 
   @@index([projectId])
-  @@index([serviceId])
   @@map("parser_states")
 }
 
@@ -180,9 +131,10 @@ model LogCluster {
   firstSeenAt     DateTime @default(now())
   lastSeenAt      DateTime @default(now())
 
-  parserState ParserState @relation(fields: [parserStateId], references: [id], onDelete: Cascade)
-  logEntries  LogEntry[]
-  anomalies   Anomaly[]
+  parserState         ParserState          @relation(fields: [parserStateId], references: [id], onDelete: Cascade)
+  logEntries          LogEntry[]
+  anomalies           Anomaly[]
+  rootCauseCandidates RootCauseCandidate[]
 
   @@unique([parserStateId, drainClusterId])
   @@index([parserStateId])
@@ -217,8 +169,8 @@ model ProcessingJob {
 model Anomaly {
   id              String   @id @default(uuid())
   projectId       String
-  serviceId       String?
   clusterId       String?
+  serviceName     String?
   anomalyType     String
   title           String
   description     String?  @db.Text
@@ -230,13 +182,11 @@ model Anomaly {
   evidence        Json?
 
   project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service           Service?          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   cluster           LogCluster?       @relation(fields: [clusterId], references: [id], onDelete: SetNull)
   incidentAnomalies IncidentAnomaly[]
 
   @@index([projectId, status])
   @@index([projectId, firstDetectedAt])
-  @@index([serviceId])
   @@index([severity])
   @@index([clusterId])
   @@map("anomalies")
@@ -278,7 +228,7 @@ model IncidentAnomaly {
 }
 
 // ==========================================
-// ROOT CAUSE ANALYSIS (RCA)
+// ROOT CAUSE ANALYSIS (RCA) - LOG CLUSTER POINT-BASED
 // ==========================================
 
 model RcaAnalysis {
@@ -297,22 +247,24 @@ model RcaAnalysis {
 }
 
 model RootCauseCandidate {
-  id              String  @id @default(uuid())
-  analysisId      String
-  serviceId       String
-  totalScore      Float
-  temporalScore   Float
-  dependencyScore Float
-  errorTypeScore  Float
-  traceScore      Float
-  explanation     String? @db.Text
-  rank            Int
+  id                   String      @id @default(uuid())
+  analysisId           String
+  clusterId            String?
+  template             String?     @db.Text
+  totalScore           Float
+  temporalPoints       Float       @default(0)
+  frequencyPoints      Float       @default(0)
+  classificationPoints Float       @default(0)
+  relationshipPoints   Float       @default(0)
+  explanation          String?     @db.Text
+  rank                 Int
+  evidence             Json?
 
   analysis RcaAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
-  service  Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  cluster  LogCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
 
   @@index([analysisId, rank])
-  @@index([serviceId])
+  @@index([clusterId])
   @@map("root_cause_candidates")
 }
 

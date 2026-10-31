@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search,
@@ -16,33 +16,29 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
-  Network,
   Plus,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { StatusIndicator } from '../../components/ui/Badge';
-import { LogEntry, ServiceNodeData, ProcessingJob } from '../../types';
+import { LogEntry } from '../../types';
 import { logService } from '../../services/log-service';
-import { serviceMapService } from '../../services/service-map-service';
 import { useProject } from '../../context/ProjectContext';
 import { UploadLogModal } from '../../components/modals/UploadLogModal';
 
 export const LogExplorerPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { activeProject, activeProjectId } = useProject();
+  const { activeProjectId } = useProject();
 
-  const urlService = searchParams.get('service') || '';
+  const urlQuery = searchParams.get('query') || '';
   const urlUpload = searchParams.get('upload') === 'true';
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [totalLogs, setTotalLogs] = useState(0);
-  const [services, setServices] = useState<ServiceNodeData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedService, setSelectedService] = useState(urlService || 'all');
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
   const [selectedLevel, setSelectedLevel] = useState('all');
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -54,27 +50,20 @@ export const LogExplorerPage: React.FC = () => {
   // Upload modal visibility
   const [uploadModalOpen, setUploadModalOpen] = useState(urlUpload);
 
-  // Load available services for filter & upload
   useEffect(() => {
-    if (!activeProjectId) return;
-    serviceMapService.getServices(activeProjectId).then(setServices).catch(console.warn);
-  }, [activeProjectId]);
-
-  useEffect(() => {
-    if (urlService) {
-      setSelectedService(urlService);
+    if (urlQuery) {
+      setSearchQuery(urlQuery);
     }
     if (urlUpload) {
       setUploadModalOpen(true);
     }
-  }, [urlService, urlUpload]);
+  }, [urlQuery, urlUpload]);
 
   const fetchLogs = async () => {
     if (!activeProjectId) return;
     setLoading(true);
     try {
       const res = await logService.getLogs(activeProjectId, {
-        service: selectedService,
         level: selectedLevel,
         query: searchQuery,
         page: currentPage,
@@ -92,7 +81,7 @@ export const LogExplorerPage: React.FC = () => {
 
   useEffect(() => {
     fetchLogs();
-  }, [activeProjectId, selectedService, selectedLevel, searchQuery, currentPage]);
+  }, [activeProjectId, selectedLevel, searchQuery, currentPage]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -109,7 +98,7 @@ export const LogExplorerPage: React.FC = () => {
             Log Stream & Ingestion Explorer
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Directly query parsed log events, inspect cluster patterns, and upload log streams.
+            Query normalized log events, inspect Drain3 cluster patterns, and upload new log datasets.
           </p>
         </div>
 
@@ -123,35 +112,25 @@ export const LogExplorerPage: React.FC = () => {
           >
             Refresh
           </Button>
-          {services.length > 0 ? (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setUploadModalOpen(true)}
-              icon={<UploadCloud className="w-3.5 h-3.5" />}
-            >
-              Upload Raw Log File
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => navigate('/dashboard/service-map')}
-              icon={<Plus className="w-3.5 h-3.5" />}
-            >
-              Register Service First
-            </Button>
-          )}
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setUploadModalOpen(true)}
+            icon={<UploadCloud className="w-3.5 h-3.5" />}
+          >
+            Upload Raw Log File
+          </Button>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
       <Card padding="md">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-          {/* Keyword Search */}
-          <div className="sm:col-span-6">
+          {/* Keyword / Pattern Search */}
+          <div className="sm:col-span-8">
             <Input
-              placeholder="Search keyword, normalized pattern, or traceId..."
+              placeholder="Search message text, Drain3 pattern, or log ID..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -161,27 +140,8 @@ export const LogExplorerPage: React.FC = () => {
             />
           </div>
 
-          {/* Service Filter */}
-          <div className="sm:col-span-3">
-            <select
-              value={selectedService}
-              onChange={(e) => {
-                setSelectedService(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full h-10.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 text-xs sm:text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-neutral-900 dark:focus:border-neutral-100"
-            >
-              <option value="all">All Services ({services.length})</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Level Filter */}
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-4">
             <select
               value={selectedLevel}
               onChange={(e) => {
@@ -219,9 +179,8 @@ export const LogExplorerPage: React.FC = () => {
                 <th className="py-3 px-4 w-10"></th>
                 <th className="py-3 px-4 font-mono w-44">Timestamp (UTC)</th>
                 <th className="py-3 px-4 w-28">Level</th>
-                <th className="py-3 px-4 w-40">Service</th>
                 <th className="py-3 px-4">Message / Normalized Event</th>
-                <th className="py-3 px-4 w-28 font-mono">Cluster</th>
+                <th className="py-3 px-4 w-36 font-mono">Cluster Pattern</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-850">
@@ -250,21 +209,18 @@ export const LogExplorerPage: React.FC = () => {
                       <td className="py-3 px-4">
                         <StatusIndicator variant={log.level} label={log.level} />
                       </td>
-                      <td className="py-3 px-4 font-semibold text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                        {log.service}
-                      </td>
                       <td className="py-3 px-4 font-mono text-[11px] text-neutral-800 dark:text-neutral-300 max-w-xl truncate">
                         {log.message}
                       </td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-neutral-400">
-                        {log.clusterId.slice(0, 10)}
+                      <td className="py-3 px-4 font-mono text-[11px] text-neutral-400 truncate max-w-xs">
+                        {log.clusterTemplate || (log.clusterId ? log.clusterId.slice(0, 10) : '-')}
                       </td>
                     </tr>
 
                     {/* Expandable Log Details Drawer */}
                     {isExpanded && (
                       <tr className="bg-neutral-100/40 dark:bg-neutral-900/40">
-                        <td colSpan={6} className="p-4 sm:p-5">
+                        <td colSpan={5} className="p-4 sm:p-5">
                           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#121212] p-4 space-y-4">
                             <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-850">
                               <div className="flex items-center gap-2">
@@ -297,23 +253,36 @@ export const LogExplorerPage: React.FC = () => {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-                              <div>
-                                <span className="text-neutral-400 block mb-1">Service Node:</span>
-                                <span className="text-neutral-900 dark:text-neutral-100 font-semibold">
-                                  {log.service}
-                                </span>
-                              </div>
+                              {log.serviceName && (
+                                <div>
+                                  <span className="text-neutral-400 block mb-1">Extracted Service Tag:</span>
+                                  <span className="text-neutral-900 dark:text-neutral-100 font-semibold">
+                                    {log.serviceName}
+                                  </span>
+                                </div>
+                              )}
                               <div>
                                 <span className="text-neutral-400 block mb-1">Cluster ID:</span>
                                 <span className="text-amber-700 dark:text-amber-400 font-semibold">
-                                  {log.clusterId}
+                                  {log.clusterId || 'Unclustered'}
                                 </span>
                               </div>
                             </div>
 
+                            {log.clusterTemplate && (
+                              <div>
+                                <span className="text-xs font-medium text-neutral-400 block mb-1">
+                                  Drain3 Template:
+                                </span>
+                                <div className="p-2.5 rounded-lg bg-neutral-100 dark:bg-neutral-850 font-mono text-xs text-neutral-800 dark:text-neutral-200">
+                                  {log.clusterTemplate}
+                                </div>
+                              </div>
+                            )}
+
                             <div>
                               <span className="text-xs font-medium text-neutral-400 block mb-1.5">
-                                Normalized Message Payload:
+                                Raw Message Payload:
                               </span>
                               <pre className="p-3 rounded-lg bg-neutral-900 text-neutral-100 dark:bg-black font-mono text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed">
                                 {log.message}
@@ -329,40 +298,18 @@ export const LogExplorerPage: React.FC = () => {
 
               {logs.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-xs text-neutral-500">
-                    {services.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center space-y-3">
-                        <Network className="w-8 h-8 text-neutral-400 mx-auto" />
-                        <div>
-                          <p className="font-semibold text-neutral-800 dark:text-neutral-200">
-                            No microservices registered yet
-                          </p>
-                          <p className="max-w-sm text-neutral-500 mt-1">
-                            A microservice architecture must be defined before log files can be ingested and mapped.
-                          </p>
-                        </div>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => navigate('/dashboard/service-map')}
-                          icon={<Plus className="w-3.5 h-3.5" />}
-                        >
-                          Register First Service
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center space-y-3">
-                        <p>No log records found matching the active filter query.</p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setUploadModalOpen(true)}
-                          icon={<UploadCloud className="w-3.5 h-3.5" />}
-                        >
-                          Upload New Log File
-                        </Button>
-                      </div>
-                    )}
+                  <td colSpan={5} className="p-12 text-center text-xs text-neutral-500">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <p>No log records found matching the active filter query.</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setUploadModalOpen(true)}
+                        icon={<UploadCloud className="w-3.5 h-3.5" />}
+                      >
+                        Upload Raw Log File
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -403,12 +350,6 @@ export const LogExplorerPage: React.FC = () => {
         isOpen={uploadModalOpen}
         onClose={() => setUploadModalOpen(false)}
         projectId={activeProjectId}
-        targetService={
-          selectedService !== 'all'
-            ? services.find((s) => s.name === selectedService || s.id === selectedService) || null
-            : null
-        }
-        availableServices={services.map((s) => ({ id: s.id, name: s.name }))}
         onSuccess={fetchLogs}
       />
     </div>

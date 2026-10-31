@@ -25,39 +25,14 @@ class LogProcessor:
     """
     Coordinates streaming log files from Object Storage, extracting structured records,
     mining templates via Drain3, and batch-persisting into PostgreSQL.
+    Analyzes logs for a single application or uploaded log dataset.
     """
     def __init__(self, db: Session, project_id: str):
         self.db = db
         self.project_id = project_id
-        self.drain_managers: Dict[str, DrainManager] = {}
+        self.drain_manager = DrainManager(self.db, self.project_id)
         self.cluster_id_cache: Dict[Tuple[str, int], str] = {} # (parser_state_id, drain_cluster_id) -> cluster_uuid
         self.cluster_counts: Dict[str, int] = {} # cluster_uuid -> increment count
-
-        # Preload registered project services
-        self.services_by_name: Dict[str, str] = {}
-        self.services_by_id: Dict[str, str] = {}
-        self._load_services()
-
-    def _load_services(self):
-        rows = self.db.execute(
-            text("""
-                SELECT id, name
-                FROM services
-                WHERE "projectId" = :project_id
-            """),
-            {"project_id": self.project_id}
-        ).fetchall()
-
-        for row in rows:
-            sid, sname = str(row[0]), str(row[1])
-            self.services_by_name[sname.lower()] = sid
-            self.services_by_id[sid] = sname
-
-    def _get_drain_manager(self, service_id: Optional[str]) -> DrainManager:
-        svc_key = service_id or "unassigned"
-        if svc_key not in self.drain_managers:
-            self.drain_managers[svc_key] = DrainManager(self.db, self.project_id, service_id)
-        return self.drain_managers[svc_key]
 
     def _resolve_cluster(
         self,
@@ -76,7 +51,6 @@ class LogProcessor:
             self.cluster_counts[cluster_uuid] = self.cluster_counts.get(cluster_uuid, 0) + 1
             return cluster_uuid
 
-        # Look up in DB
         row = self.db.execute(
             text("""
                 SELECT id
@@ -138,8 +112,8 @@ class LogProcessor:
         job_id: str,
         log_source_id: str,
         file_key: str,
-        default_service_id: Optional[str] = None,
         bucket: Optional[str] = None,
+        default_service_name: Optional[str] = None,
     ) -> int:
         bucket_name = bucket or settings.STORAGE_BUCKET_NAME
         logger.info(f"Starting ingestion job {job_id} for {bucket_name}/{file_key}")
@@ -157,41 +131,34 @@ class LogProcessor:
 
         total_processed = 0
         batch_entries: List[dict] = []
-        fallback_service_name = self.services_by_id.get(default_service_id) if default_service_id else None
 
         try:
-            # 2. Stream lines from S3
+            # 2. Stream lines from Object Storage
             for line in stream_file_lines(bucket_name, file_key):
                 if not line:
                     continue
 
-                # 3. Extract record
-                rec: ExtractedLogRecord = extract_log_record(line, fallback_service_name=fallback_service_name)
+                # 3. Extract record cleanly
+                rec: ExtractedLogRecord = extract_log_record(line, fallback_service_name=default_service_name)
 
-                # 4. Resolve service
-                service_id = default_service_id
-                if not service_id and rec.service_name:
-                    service_id = self.services_by_name.get(rec.service_name.lower())
+                # 4. Feed into Drain3
+                drain_cluster_id, template, _is_new = self.drain_manager.process_message(rec.normalized_message)
 
-                # 5. Feed into Drain3
-                drain_mgr = self._get_drain_manager(service_id)
-                drain_cluster_id, template, _is_new = drain_mgr.process_message(rec.normalized_message)
-
-                # 6. Resolve cluster database UUID
+                # 5. Resolve cluster database UUID
                 cluster_uuid = self._resolve_cluster(
-                    parser_state_id=drain_mgr.parser_state_id,
+                    parser_state_id=self.drain_manager.parser_state_id,
                     drain_cluster_id=drain_cluster_id,
                     template=template,
                     log_timestamp=rec.timestamp
                 )
 
-                # 7. Queue log_entry
+                # 6. Queue log_entry
                 batch_entries.append({
                     "id": str(uuid.uuid4()),
                     "projectId": self.project_id,
-                    "serviceId": service_id,
                     "sourceId": log_source_id,
                     "clusterId": cluster_uuid,
+                    "serviceName": rec.service_name,
                     "timestamp": rec.timestamp,
                     "level": rec.level,
                     "rawMessage": rec.raw_message,
@@ -216,20 +183,20 @@ class LogProcessor:
             # Flush cluster occurrence counts
             self._flush_cluster_counts()
 
-            # 8. Save Drain3 parser states to database
-            for drain_mgr in self.drain_managers.values():
-                drain_mgr.save_state(reason=f"job_{job_id}_completed")
+            # 7. Save Drain3 parser state to database
+            self.drain_manager.save_state(reason=f"job_{job_id}_completed")
 
-            # 9. Intelligence Pipeline: Anomaly Detection -> Correlation -> RCA -> AI Summary
+            # 8. Statistical Intelligence Pipeline:
+            # Anomaly Detection (Parts 2-5) -> Incident Correlation (Part 6) -> RCA (Part 7) -> AI Summary (Part 8)
             try:
-                logger.info(f"Triggering Phase 3 Intelligence pipeline for project {self.project_id}")
-                # Step A: Anomaly Detection & Evaluation
+                logger.info(f"Triggering Statistical Anomaly & Point-based RCA pipeline for project {self.project_id}")
+                # Step A: Standard deviation spike detection & new pattern discovery
                 detect_and_evaluate_anomalies(self.db, self.project_id)
 
                 # Step B: Incident Correlation
                 incident_ids = correlate_incidents(self.db, self.project_id)
 
-                # Step C: Deterministic RCA Engine & Step D: AI Incident Summary
+                # Step C: Point-based RCA Engine (ranking log patterns) & Step D: AI Explanation
                 rca = RcaEngine(self.db)
                 for inc_id in incident_ids:
                     rca_result = rca.analyze_incident(inc_id)
@@ -241,7 +208,7 @@ class LogProcessor:
             except Exception as intel_err:
                 logger.warn(f"Intelligence pipeline warning for project {self.project_id}: {intel_err}", exc_info=True)
 
-            # 10. Mark job COMPLETED
+            # 9. Mark job COMPLETED
             self.db.execute(
                 text("""
                     UPDATE processing_jobs
@@ -259,39 +226,34 @@ class LogProcessor:
             return total_processed
 
         except Exception as e:
-            logger.error(f"Error processing job {job_id}: {str(e)}", exc_info=True)
-            self.db.rollback()
+            logger.error(f"Ingestion job {job_id} failed: {e}", exc_info=True)
             self.db.execute(
                 text("""
                     UPDATE processing_jobs
-                    SET status = 'FAILED',
-                        "errorMessage" = :error,
-                        "completedAt" = NOW()
+                    SET status = 'FAILED', "errorMessage" = :err, "completedAt" = NOW()
                     WHERE id = :job_id
                 """),
-                {"job_id": job_id, "error": str(e)[:1000]}
+                {"job_id": job_id, "err": str(e)}
             )
             self.db.commit()
-            raise
+            raise e
 
     def _flush_batch(self, entries: List[dict]):
         if not entries:
             return
 
-        self.db.execute(
-            text("""
-                INSERT INTO log_entries (
-                    id, "projectId", "serviceId", "sourceId", "clusterId",
-                    timestamp, level, "rawMessage", "normalizedMessage",
-                    "traceId", "spanId", metadata
-                ) VALUES (
-                    :id, :projectId, :serviceId, :sourceId, :clusterId,
-                    :timestamp, :level, :rawMessage, :normalizedMessage,
-                    :traceId, :spanId, CAST(:metadata AS jsonb)
-                )
-            """),
-            entries
-        )
+        insert_sql = """
+            INSERT INTO log_entries (
+                id, "projectId", "sourceId", "clusterId", "serviceName",
+                timestamp, level, "rawMessage", "normalizedMessage",
+                "traceId", "spanId", metadata
+            ) VALUES (
+                :id, :projectId, :sourceId, :clusterId, :serviceName,
+                :timestamp, :level, :rawMessage, :normalizedMessage,
+                :traceId, :spanId, CAST(:metadata AS jsonb)
+            )
+        """
+        self.db.execute(text(insert_sql), entries)
         self.db.commit()
 
 
@@ -299,17 +261,16 @@ def process_uploaded_log_source(
     job_id: str,
     log_source_id: str,
     project_id: str,
-    service_id: Optional[str],
     file_key: str,
     bucket: Optional[str] = None,
+    service_id: Optional[str] = None,
 ) -> int:
-    """Entry point for processing job execution with isolated session."""
+    """Entry point called by FastAPI background task or sync route."""
     with get_db() as db:
-        processor = LogProcessor(db, project_id)
+        processor = LogProcessor(db=db, project_id=project_id)
         return processor.process_log_source(
             job_id=job_id,
             log_source_id=log_source_id,
             file_key=file_key,
-            default_service_id=service_id,
             bucket=bucket,
         )

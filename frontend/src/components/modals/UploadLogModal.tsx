@@ -7,24 +7,17 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
-  Cpu,
   ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { logService } from '../../services/log-service';
 import { ProcessingJob } from '../../types';
 
-interface ServiceOption {
-  id: string;
-  name: string;
-}
-
 interface UploadLogModalProps {
   isOpen: boolean;
   onClose: () => void;
   projectId: string;
-  targetService?: ServiceOption | null;
-  availableServices?: ServiceOption[];
   onSuccess?: () => void;
 }
 
@@ -32,12 +25,9 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
   isOpen,
   onClose,
   projectId,
-  targetService,
-  availableServices = [],
   onSuccess,
 }) => {
   const navigate = useNavigate();
-  const [selectedServiceId, setSelectedServiceId] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle');
@@ -47,22 +37,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    if (targetService) {
-      setSelectedServiceId(targetService.id);
-    } else if (availableServices.length > 0) {
-      setSelectedServiceId((prev) => {
-        if (prev && availableServices.some((s) => s.id === prev)) {
-          return prev;
-        }
-        return availableServices[0].id;
-      });
-    } else {
-      setSelectedServiceId('');
-    }
-  }, [targetService, availableServices, isOpen]);
-
-  // Always reset to a fresh idle upload state whenever modal opens or service changes
+  // Always reset to a fresh idle upload state whenever modal opens
   useEffect(() => {
     if (isOpen) {
       if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
@@ -74,7 +49,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
         fileInputRef.current.value = '';
       }
     }
-  }, [isOpen, targetService?.id]);
+  }, [isOpen]);
 
   useEffect(() => {
     return () => {
@@ -108,10 +83,8 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
     setUploadState('uploading');
     setUploadError(null);
 
-    const serviceIdToUse = targetService?.id || (selectedServiceId !== 'all' ? selectedServiceId : undefined);
-
     try {
-      const res = await logService.uploadLogFile(projectId, uploadFile, serviceIdToUse);
+      const res = await logService.uploadLogFile(projectId, uploadFile);
       setUploadState('processing');
       const jobId = res.processingJob?.id;
 
@@ -129,13 +102,13 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
               } else if (current.status === 'FAILED') {
                 if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
                 setUploadState('error');
-                setUploadError(current.errorMessage || 'Log parsing and anomaly detection failed');
+                setUploadError(current.errorMessage || 'Log parsing and statistical analysis failed');
               }
             }
           } catch (err) {
             console.warn('Job polling error:', err);
           }
-        }, 1500);
+        }, 1200);
       } else {
         setUploadState('success');
         onSuccess?.();
@@ -155,15 +128,11 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
     onClose();
   };
 
-  const resolvedServiceName =
-    targetService?.name ||
-    availableServices.find((s) => s.id === selectedServiceId)?.name ||
-    'Selected Microservice';
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={handleResetAndClose} />
-      <div className="relative w-full max-w-xl rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#121212] p-6 shadow-2xl text-neutral-900 dark:text-neutral-100 animate-in fade-in zoom-in-95 duration-150">
+
+      <div className="relative w-full max-w-lg rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#121212] p-6 shadow-2xl text-neutral-900 dark:text-neutral-100 animate-in fade-in zoom-in-95 duration-150">
         <button
           onClick={handleResetAndClose}
           className="absolute right-4 top-4 p-1 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
@@ -177,10 +146,10 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
           </div>
           <div>
             <h3 className="font-display text-lg font-bold tracking-tight">
-              Upload Service Log File
+              Upload Log Dataset
             </h3>
             <p className="text-xs text-neutral-500">
-              Ingest telemetry logs directly mapped to microservice DAG topology.
+              Drain3 template clustering, statistical standard-deviation spike detection, and 15-point RCA.
             </p>
           </div>
         </div>
@@ -191,40 +160,6 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
             <span>{uploadError}</span>
           </div>
         )}
-
-        {/* Target Service Badge or Dropdown */}
-        <div className="my-4 p-3 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-amber-600 dark:text-amber-500" />
-              <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                Target Microservice:
-              </span>
-            </div>
-            {targetService ? (
-              <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-neutral-900 text-white dark:bg-neutral-800 dark:text-neutral-100">
-                {targetService.name}
-              </span>
-            ) : availableServices.length > 0 ? (
-              <select
-                value={selectedServiceId}
-                onChange={(e) => setSelectedServiceId(e.target.value)}
-                className="text-xs font-mono font-bold rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none"
-              >
-                {availableServices.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-xs text-amber-600">No services found</span>
-            )}
-          </div>
-          <p className="text-[11px] text-neutral-400 mt-1.5">
-            Log entries will be tagged to <span className="font-semibold text-neutral-600 dark:text-neutral-300 font-mono">{resolvedServiceName}</span> for Drain3 template clustering and automated RCA blast-radius evaluation.
-          </p>
-        </div>
 
         {/* Drop Zone */}
         {uploadState === 'idle' && (
@@ -242,7 +177,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
               }
             }}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-7 text-center cursor-pointer transition-colors ${
+            className={`my-4 border-2 border-dashed rounded-2xl p-7 text-center cursor-pointer transition-colors ${
               isDragging
                 ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-neutral-850'
                 : 'border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-600'
@@ -264,16 +199,16 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
                   {uploadFile.name}
                 </span>
                 <span className="text-[11px] text-neutral-400">
-                  {(uploadFile.size / 1024).toFixed(1)} KB · Ready to ingest for {resolvedServiceName}
+                  {(uploadFile.size / 1024).toFixed(1)} KB · Ready for statistical analysis
                 </span>
               </div>
             ) : (
               <div>
                 <p className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
-                  Click to select or drag <span className="font-mono font-semibold">{resolvedServiceName}</span> log file here
+                  Click to select or drag log file here (.log, .txt, .csv, JSON)
                 </p>
                 <p className="text-[11px] text-neutral-400 mt-1">
-                  Supports .log, .txt, .csv, and JSON formats up to 50MB
+                  Supports up to 50MB per upload
                 </p>
               </div>
             )}
@@ -282,19 +217,19 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
 
         {/* Uploading or Processing Progress */}
         {(uploadState === 'uploading' || uploadState === 'processing') && (
-          <div className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 space-y-4">
+          <div className="my-4 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 space-y-4">
             <div className="flex items-center gap-3">
               <Loader2 className="w-5 h-5 text-amber-600 dark:text-amber-500 animate-spin shrink-0" />
               <div>
                 <h4 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
                   {uploadState === 'uploading'
-                    ? `Uploading ${resolvedServiceName} log stream...`
-                    : `Clustering & mining templates for ${resolvedServiceName}...`}
+                    ? 'Transferring log file to encrypted storage...'
+                    : 'Clustering templates & calculating 5-minute statistical baselines...'}
                 </h4>
                 <p className="text-[11px] text-neutral-500">
                   {uploadState === 'uploading'
-                    ? 'Transferring payload to encrypted storage'
-                    : `Analyzed ${activeJob?.processedLines || 0} lines · ${activeJob?.progressPercentage || 15}%`}
+                    ? 'Uploading file payload'
+                    : `Processed ${activeJob?.processedLines || 0} lines · Running 15-point RCA`}
                 </p>
               </div>
             </div>
@@ -306,7 +241,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
                   width: `${
                     uploadState === 'uploading'
                       ? 25
-                      : activeJob?.progressPercentage || 45
+                      : activeJob?.progressPercentage || 50
                   }%`,
                 }}
               />
@@ -316,13 +251,13 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
 
         {/* Success State */}
         {uploadState === 'success' && (
-          <div className="p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+          <div className="my-4 p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
             <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-semibold text-sm">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <span>Logs Ingested & Analyzed for {resolvedServiceName}!</span>
+              <span>Log Dataset Successfully Ingested & Analyzed!</span>
             </div>
             <p className="text-xs text-neutral-600 dark:text-neutral-400">
-              Drain3 templates discovered and anomaly detection completed for this service node.
+              Drain3 templates discovered, 5-minute baseline standard-deviation spikes evaluated, and point-based root cause analysis completed.
             </p>
             <div className="pt-2 flex items-center gap-2">
               <Button
@@ -344,11 +279,11 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
                 size="sm"
                 onClick={() => {
                   handleResetAndClose();
-                  navigate(`/dashboard/logs?service=${encodeURIComponent(resolvedServiceName)}`);
+                  navigate('/dashboard/incidents');
                 }}
                 icon={<ArrowRight className="w-3.5 h-3.5" />}
               >
-                Inspect Logs & Anomalies
+                View Incidents & RCA
               </Button>
             </div>
           </div>
@@ -365,9 +300,9 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
               size="sm"
               disabled={!uploadFile}
               onClick={handleStartUpload}
-              icon={<UploadCloud className="w-3.5 h-3.5" />}
+              icon={<Sparkles className="w-3.5 h-3.5" />}
             >
-              Upload to {resolvedServiceName}
+              Analyze Log Stream
             </Button>
           )}
         </div>

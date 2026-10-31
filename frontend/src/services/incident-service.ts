@@ -2,15 +2,16 @@ import { Incident, IncidentStatus, SeverityLevel } from '../types';
 import { apiClient } from './api/client';
 
 export interface IncidentFilterOptions {
-  severity?: SeverityLevel | 'all';
-  status?: IncidentStatus | 'all';
-  service?: string;
-  query?: string;
+  severity?: string;
+  status?: string;
   page?: number;
   limit?: number;
 }
 
 export const incidentService = {
+  /**
+   * Fetches incidents with point-based RCA cluster rankings & AI explanations
+   */
   async getIncidents(projectId: string, filters?: IncidentFilterOptions): Promise<Incident[]> {
     if (!apiClient.isBackendConnected || !projectId) {
       return [];
@@ -25,7 +26,7 @@ export const incidentService = {
         queryParams.set('status', filters.status.toUpperCase());
       }
       queryParams.set('page', String(filters?.page || 1));
-      queryParams.set('limit', String(filters?.limit || 50));
+      queryParams.set('limit', String(filters?.limit || 20));
 
       const res = await apiClient.fetchEndpoint<{
         items: any[];
@@ -33,63 +34,45 @@ export const incidentService = {
 
       if (res?.items && Array.isArray(res.items)) {
         return res.items.map((item) => {
-          const topCandidate = item.rcaAnalyses?.[0]?.candidates?.[0];
+          const candidates = item.rcaAnalyses?.[0]?.candidates || [];
+          const topCandidate = candidates[0];
           const summary = item.incidentSummaries?.[0];
-          const affectedServices = Array.from(
-            new Set(
-              (item.incidentAnomalies || []).map((ia: any) => ia.anomaly?.service?.name).filter(Boolean)
-            )
-          ) as string[];
 
           return {
             id: item.id,
             title: item.title,
             severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
             status: item.status as IncidentStatus,
-            suspectedRootCauseService: topCandidate?.service?.name || affectedServices[0] || 'Unknown Service',
-            affectedServices: affectedServices.length > 0 ? affectedServices : ['Core Service'],
+            suspectedRootCauseTemplate:
+              topCandidate?.template ||
+              topCandidate?.cluster?.template ||
+              item.rcaAnalyses?.[0]?.conclusion ||
+              'Evaluating pattern',
             firstDetected: new Date(item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
             lastUpdated: new Date(item.updatedAt || item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
             aiSummary:
+              summary?.summary ||
               summary?.summaryText ||
-              'Incident identified via Drain3 clustering anomaly burst. Gemini AI synthesis in progress.',
-            rootCauseCandidates: (item.rcaAnalyses?.[0]?.candidates || []).map((c: any) => ({
-              service: c.service?.name || 'Target Service',
-              confidenceScore: Math.round(c.compositeScore * 100),
-              reasoning: c.explanation || 'High multi-factor correlation score across temporal, volume, and DAG centrality metrics.',
-              supportingEvidence: [
-                `Temporal score: ${(c.temporalScore * 100).toFixed(0)}%`,
-                `Topology centrality: ${(c.centralityScore * 100).toFixed(0)}%`,
-                `Volume surge deviation: ${(c.volumeScore * 100).toFixed(0)}%`,
-                `Template novelty: ${(c.noveltyScore * 100).toFixed(0)}%`,
-              ],
-              relatedAnomalies: [],
-              relatedClusters: [],
-              suggestedRemediation: summary?.recommendedActions || ['Inspect service connection pool', 'Review upstream API retry configuration'],
-              breakdown: {
-                temporalScore: c.temporalScore,
-                centralityScore: c.centralityScore,
-                volumeScore: c.volumeScore,
-                noveltyScore: c.noveltyScore,
-              },
+              'Point-based log pattern RCA in progress.',
+            rootCauseCandidates: candidates.map((c: any) => ({
+              clusterId: c.clusterId || c.cluster?.id,
+              template: c.template || c.cluster?.template || 'Unknown Pattern',
+              totalScore: c.totalScore,
+              temporalPoints: c.temporalPoints || 0,
+              frequencyPoints: c.frequencyPoints || 0,
+              classificationPoints: c.classificationPoints || 0,
+              relationshipPoints: c.relationshipPoints || 0,
+              explanation: c.explanation || `Scored ${c.totalScore}/15 pts in multi-signal statistical analysis.`,
+              rank: c.rank,
+              evidence: c.evidence,
             })),
             correlatedTimeline: (item.incidentAnomalies || []).map((ia: any, idx: number) => ({
               id: `tl-${idx}`,
               time: new Date(ia.anomaly?.firstDetectedAt || item.startedAt).toISOString().slice(11, 19) + ' UTC',
-              service: ia.anomaly?.service?.name || 'service',
-              event: `${ia.anomaly?.title || 'Anomaly'} detected`,
+              event: ia.anomaly?.title || 'Anomaly detected',
               severity: (ia.anomaly?.severity?.toLowerCase() as SeverityLevel) || 'high',
-              evidenceType: 'anomaly' as const,
-              evidenceRef: ia.anomaly?.id || '',
-              description: `Statistically significant deviation in ${ia.anomaly?.service?.name || 'service'}`,
+              description: ia.anomaly?.description || '',
             })),
-            investigationChecklist: [
-              { id: 'chk-1', text: 'Confirm root cause service telemetry metrics', completed: true, category: 'triage' },
-              { id: 'chk-2', text: 'Verify upstream retry storms and queue saturation', completed: item.status !== 'OPEN', category: 'triage' },
-              { id: 'chk-3', text: 'Apply configuration fix or restart degraded pods', completed: item.status === 'RESOLVED', category: 'mitigation' },
-              { id: 'chk-4', text: 'Post-incident Drain3 error baseline verification', completed: item.status === 'RESOLVED', category: 'verification' },
-            ],
-            evidenceLogs: [],
           };
         });
       }
@@ -106,108 +89,70 @@ export const incidentService = {
     }
 
     try {
-      const res = await apiClient.fetchEndpoint<{ incident: any }>(
-        `/incidents/${projectId}/${incidentId}`
-      );
+      const res = await apiClient.fetchEndpoint<{
+        incident: any;
+      }>(`/incidents/${projectId}/${incidentId}`);
+
       if (res?.incident) {
         const item = res.incident;
-        const topCandidate = item.rcaAnalyses?.[0]?.candidates?.[0];
+        const candidates = item.rcaAnalyses?.[0]?.candidates || [];
+        const topCandidate = candidates[0];
         const summary = item.incidentSummaries?.[0];
-        const affectedServices = Array.from(
-          new Set(
-            (item.incidentAnomalies || []).map((ia: any) => ia.anomaly?.service?.name).filter(Boolean)
-          )
-        ) as string[];
 
         return {
           id: item.id,
           title: item.title,
           severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
           status: item.status as IncidentStatus,
-          suspectedRootCauseService: topCandidate?.service?.name || affectedServices[0] || 'Unknown Service',
-          affectedServices: affectedServices.length > 0 ? affectedServices : ['Core Service'],
+          suspectedRootCauseTemplate:
+            topCandidate?.template ||
+            topCandidate?.cluster?.template ||
+            item.rcaAnalyses?.[0]?.conclusion ||
+            'Evaluating pattern',
           firstDetected: new Date(item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
           lastUpdated: new Date(item.updatedAt || item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
           aiSummary:
+            summary?.summary ||
             summary?.summaryText ||
-            'Gemini AI Root Cause Analysis report: High severity anomaly cascade detected across microservice boundary.',
-          rootCauseCandidates: (item.rcaAnalyses?.[0]?.candidates || []).map((c: any) => ({
-            service: c.service?.name || 'Target Service',
-            confidenceScore: Math.round(c.compositeScore * 100),
-            reasoning: c.explanation || 'Deterministic 4-factor root cause algorithm score.',
-            supportingEvidence: [
-              `Temporal precedence score: ${(c.temporalScore * 100).toFixed(0)}%`,
-              `DAG topology centrality score: ${(c.centralityScore * 100).toFixed(0)}%`,
-              `Volume surge deviation: ${(c.volumeScore * 100).toFixed(0)}%`,
-              `Template novelty score: ${(c.noveltyScore * 100).toFixed(0)}%`,
-            ],
-            relatedAnomalies: [],
-            relatedClusters: [],
-            suggestedRemediation: summary?.recommendedActions || ['Inspect service connection pool', 'Review upstream API retry configuration'],
-            breakdown: {
-              temporalScore: c.temporalScore,
-              centralityScore: c.centralityScore,
-              volumeScore: c.volumeScore,
-              noveltyScore: c.noveltyScore,
-            },
+            'Point-based log pattern RCA in progress.',
+          rootCauseCandidates: candidates.map((c: any) => ({
+            clusterId: c.clusterId || c.cluster?.id,
+            template: c.template || c.cluster?.template || 'Unknown Pattern',
+            totalScore: c.totalScore,
+            temporalPoints: c.temporalPoints || 0,
+            frequencyPoints: c.frequencyPoints || 0,
+            classificationPoints: c.classificationPoints || 0,
+            relationshipPoints: c.relationshipPoints || 0,
+            explanation: c.explanation || `Scored ${c.totalScore}/15 pts.`,
+            rank: c.rank,
+            evidence: c.evidence,
           })),
           correlatedTimeline: (item.incidentAnomalies || []).map((ia: any, idx: number) => ({
             id: `tl-${idx}`,
             time: new Date(ia.anomaly?.firstDetectedAt || item.startedAt).toISOString().slice(11, 19) + ' UTC',
-            service: ia.anomaly?.service?.name || 'service',
-            event: `${ia.anomaly?.title || 'Anomaly'} triggered`,
+            event: ia.anomaly?.title || 'Anomaly detected',
             severity: (ia.anomaly?.severity?.toLowerCase() as SeverityLevel) || 'high',
-            evidenceType: 'anomaly' as const,
-            evidenceRef: ia.anomaly?.id || '',
-            description: ia.anomaly?.cluster?.template || `Statistically verified deviation in ${ia.anomaly?.service?.name || 'service'}`,
+            description: ia.anomaly?.description || '',
           })),
-          investigationChecklist: [
-            { id: 'chk-1', text: 'Confirm root cause service telemetry metrics', completed: true, category: 'triage' },
-            { id: 'chk-2', text: 'Verify upstream retry storms and queue saturation', completed: item.status !== 'OPEN', category: 'triage' },
-            { id: 'chk-3', text: 'Apply configuration fix or restart degraded pods', completed: item.status === 'RESOLVED', category: 'mitigation' },
-            { id: 'chk-4', text: 'Post-incident Drain3 error baseline verification', completed: item.status === 'RESOLVED', category: 'verification' },
-          ],
-          evidenceLogs: [],
         };
       }
     } catch (err) {
-      console.warn(`Could not fetch incident ${incidentId}:`, err);
+      console.warn(`Failed to fetch incident ${incidentId}:`, err);
     }
+
     return null;
   },
 
-  async updateIncidentStatus(
-    projectId: string,
-    incidentId: string,
-    status: IncidentStatus
-  ): Promise<Incident | null> {
-    if (apiClient.isBackendConnected && projectId) {
-      try {
-        const res = await apiClient.fetchEndpoint<{ incident: any }>(
-          `/incidents/${projectId}/${incidentId}/status`,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({ status }),
-          }
-        );
-        if (res?.incident) {
-          return this.getIncidentById(projectId, incidentId);
-        }
-      } catch (err) {
-        console.error(`Failed to update incident status for ${incidentId}:`, err);
-      }
+  async updateStatus(projectId: string, incidentId: string, status: IncidentStatus): Promise<boolean> {
+    try {
+      await apiClient.fetchEndpoint(`/incidents/${projectId}/${incidentId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      return true;
+    } catch (err) {
+      console.error(`Failed to update status for incident ${incidentId}:`, err);
+      return false;
     }
-    return null;
-  },
-
-  async toggleChecklistItem(incident: Incident, checklistId: string): Promise<Incident> {
-    const updatedChecklist = incident.investigationChecklist.map((item) =>
-      item.id === checklistId ? { ...item, completed: !item.completed } : item
-    );
-    return {
-      ...incident,
-      investigationChecklist: updatedChecklist,
-      lastUpdated: new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC',
-    };
   },
 };

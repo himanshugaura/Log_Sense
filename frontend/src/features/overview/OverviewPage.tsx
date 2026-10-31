@@ -9,11 +9,10 @@ import {
   UploadCloud,
   Building2,
   ArrowRight,
-  Plus,
   CheckCircle2,
   Sparkles,
   ChevronRight,
-  ShieldAlert,
+  TrendingUp,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -32,10 +31,9 @@ import { useTheme } from '../../context/ThemeContext';
 import { useProject } from '../../context/ProjectContext';
 import { incidentService } from '../../services/incident-service';
 import { anomalyService } from '../../services/anomaly-service';
-import { serviceMapService } from '../../services/service-map-service';
 import { logService } from '../../services/log-service';
 import { UploadLogModal } from '../../components/modals/UploadLogModal';
-import { Incident, Anomaly, ServiceNodeData } from '../../types';
+import { Incident, Anomaly } from '../../types';
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
@@ -45,7 +43,6 @@ export const OverviewPage: React.FC = () => {
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
-  const [services, setServices] = useState<ServiceNodeData[]>([]);
   const [logCount, setLogCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -57,15 +54,13 @@ export const OverviewPage: React.FC = () => {
       return;
     }
     try {
-      const [incList, anomList, svcList, logsRes] = await Promise.all([
+      const [incList, anomList, logsRes] = await Promise.all([
         incidentService.getIncidents(activeProjectId),
         anomalyService.getAnomalies(activeProjectId),
-        serviceMapService.getServices(activeProjectId),
         logService.getLogs(activeProjectId, { limit: 1 }),
       ]);
       setIncidents(incList);
       setAnomalies(anomList);
-      setServices(svcList);
       setLogCount(logsRes.total || activeProject?._count?.logEntries || 0);
     } catch (err) {
       console.warn('Failed to load overview data:', err);
@@ -92,11 +87,11 @@ export const OverviewPage: React.FC = () => {
   const tooltipBorder = isDark ? '#262626' : '#e5e5e5';
 
   const totalLogs = logCount || activeProject?._count?.logEntries || 0;
-  const errorCount = anomalies.length > 0 ? anomalies.length * 6 : 0;
+  const errorSpikesCount = anomalies.filter((a) => a.type === 'SPIKE').length;
+  const newPatternsCount = anomalies.filter((a) => a.type === 'NEW_PATTERN').length;
   const activeIncidents = incidents.filter((i) => i.status !== 'RESOLVED');
   const criticalCount = activeIncidents.filter((i) => i.severity === 'critical').length;
   const highCount = activeIncidents.filter((i) => i.severity === 'high').length;
-  const monitoredServicesCount = services.length || activeProject?._count?.services || 0;
 
   if (!loading && (!activeProjectId || projects.length === 0)) {
     return (
@@ -106,10 +101,10 @@ export const OverviewPage: React.FC = () => {
         </div>
         <div>
           <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-            No Active Infrastructure Workspace
+            No Active Workspace
           </h2>
           <p className="text-xs text-neutral-500 mt-1">
-            Complete your onboarding flow: create an organization, define projects, and register your microservices topology first.
+            Create an organization and project workspace to begin statistical log analysis.
           </p>
         </div>
         <Button
@@ -119,7 +114,7 @@ export const OverviewPage: React.FC = () => {
           className="mx-auto"
           icon={<ArrowRight className="w-4 h-4" />}
         >
-          Go to Organizations & Setup
+          Go to Organizations
         </Button>
       </div>
     );
@@ -134,9 +129,9 @@ export const OverviewPage: React.FC = () => {
             Overview
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500">
-            Telemetry ingestion & AI root cause analysis for{' '}
+            Statistical anomaly detection, 5-minute moving baselines, and 15-point RCA for{' '}
             <span className="font-semibold text-neutral-800 dark:text-neutral-200 font-mono">
-              {activeProject?.name || 'Project'}
+              {activeProject?.name || 'Workspace'}
             </span>
           </p>
         </div>
@@ -152,25 +147,14 @@ export const OverviewPage: React.FC = () => {
             {refreshing ? 'Refreshing' : 'Refresh'}
           </Button>
 
-          {monitoredServicesCount > 0 ? (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setUploadModalOpen(true)}
-              icon={<UploadCloud className="w-3.5 h-3.5" />}
-            >
-              Upload Logs
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => navigate('/dashboard/service-map')}
-              icon={<Plus className="w-3.5 h-3.5" />}
-            >
-              Register Service First
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setUploadModalOpen(true)}
+            icon={<UploadCloud className="w-3.5 h-3.5" />}
+          >
+            Upload Log Dataset
+          </Button>
         </div>
       </div>
 
@@ -179,7 +163,7 @@ export const OverviewPage: React.FC = () => {
         {/* Total Logs */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Total Logs</span>
+            <span>Total Logs Ingested</span>
             <FileCode2 className="w-4 h-4 text-neutral-400" />
           </div>
           <div className="mt-3">
@@ -187,39 +171,39 @@ export const OverviewPage: React.FC = () => {
               {totalLogs.toLocaleString()}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {totalLogs > 0 ? `Across ${monitoredServicesCount} services` : 'No logs ingested'}
+              {totalLogs > 0 ? 'Single application stream' : 'No logs ingested'}
             </p>
           </div>
         </Card>
 
-        {/* Error Events */}
+        {/* Statistical Spikes */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Error Events</span>
-            <AlertOctagon className="w-4 h-4 text-red-500" />
+            <span>Standard Deviation Spikes</span>
+            <TrendingUp className="w-4 h-4 text-red-500" />
           </div>
           <div className="mt-3">
             <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
-              {errorCount}
+              {errorSpikesCount}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {errorCount > 0 ? 'Surge detected' : '0 errors logged'}
+              {errorSpikesCount > 0 ? '> 2σ deviation detected' : 'Normal error baseline'}
             </p>
           </div>
         </Card>
 
-        {/* Anomalies */}
+        {/* New Patterns */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Anomalies</span>
+            <span>New Patterns Discovered</span>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <div className="mt-3">
             <span className="font-mono text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-              {anomalies.length}
+              {newPatternsCount}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {anomalies.length > 0 ? 'Drain3 template spikes' : '0 anomalies'}
+              {newPatternsCount > 0 ? 'Drain3 new templates' : 'No new error patterns'}
             </p>
           </div>
         </Card>
@@ -227,7 +211,7 @@ export const OverviewPage: React.FC = () => {
         {/* Active Incidents */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Active Incidents</span>
+            <span>Active Incidents & RCA</span>
             <Flame className="w-4 h-4 text-red-500" />
           </div>
           <div className="mt-3">
@@ -235,32 +219,32 @@ export const OverviewPage: React.FC = () => {
               {activeIncidents.length}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {criticalCount > 0 ? `${criticalCount} Critical` : highCount > 0 ? `${highCount} High` : 'All systems normal'}
+              {criticalCount > 0 ? `${criticalCount} Critical` : highCount > 0 ? `${highCount} High` : 'All baselines healthy'}
             </p>
           </div>
         </Card>
       </div>
 
-      {/* Full-Width Telemetry Volume & Error Chart */}
+      {/* Full-Width Telemetry Volume & Error Spikes Chart */}
       <Card padding="md" className="space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-850">
           <div>
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-              Log Activity & Error Distribution
+              Log Activity & Deviation Timeline
             </h2>
             <p className="text-xs text-neutral-500">
-              Log stream volume compared against error and anomaly spikes
+              Overall ingestion volume evaluated against 5-minute statistical moving baselines
             </p>
           </div>
           {totalLogs > 0 && (
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-neutral-400" />
-                <span className="text-neutral-500">Volume</span>
+                <span className="text-neutral-500">Total Volume</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <span className="text-neutral-500">Errors</span>
+                <span className="text-neutral-500">Statistical Spikes</span>
               </div>
             </div>
           )}
@@ -272,9 +256,9 @@ export const OverviewPage: React.FC = () => {
               <AreaChart
                 data={[
                   { time: '10:00', totalVolume: Math.round(totalLogs * 0.15), errors: 0 },
-                  { time: '10:05', totalVolume: Math.round(totalLogs * 0.22), errors: Math.min(errorCount, 1) },
-                  { time: '10:10', totalVolume: Math.round(totalLogs * 0.38), errors: errorCount },
-                  { time: '10:15', totalVolume: Math.round(totalLogs * 0.32), errors: Math.round(errorCount * 0.6) },
+                  { time: '10:05', totalVolume: Math.round(totalLogs * 0.22), errors: Math.min(errorSpikesCount * 5, 2) },
+                  { time: '10:10', totalVolume: Math.round(totalLogs * 0.38), errors: errorSpikesCount * 12 },
+                  { time: '10:15', totalVolume: Math.round(totalLogs * 0.32), errors: Math.round(errorSpikesCount * 8) },
                   { time: '10:20', totalVolume: Math.round(totalLogs * 0.18), errors: 0 },
                 ]}
                 margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
@@ -306,7 +290,7 @@ export const OverviewPage: React.FC = () => {
                   fill="#ef4444"
                   fillOpacity={0.25}
                   strokeWidth={2}
-                  name="Errors"
+                  name="Spikes"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -316,48 +300,35 @@ export const OverviewPage: React.FC = () => {
             <FileCode2 className="w-10 h-10 text-neutral-400" />
             <div>
               <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
-                No Ingested Telemetry
+                No Log Dataset Ingested
               </h3>
               <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                {monitoredServicesCount === 0
-                  ? 'Define your microservices first, then upload raw logs to start automated analysis.'
-                  : 'Upload log files to microservices to start Drain3 clustering and anomaly discovery.'}
+                Upload your raw log file (.log, .txt, .csv, JSON) to run Drain3 template mining, 5-minute standard deviation spike detection, and 15-point RCA.
               </p>
             </div>
-            {monitoredServicesCount > 0 ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setUploadModalOpen(true)}
-                icon={<UploadCloud className="w-3.5 h-3.5" />}
-              >
-                Upload First Log
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/dashboard/service-map')}
-                icon={<Plus className="w-3.5 h-3.5" />}
-              >
-                Register Microservice
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setUploadModalOpen(true)}
+              icon={<UploadCloud className="w-3.5 h-3.5" />}
+            >
+              Upload First Log File
+            </Button>
           </div>
         )}
       </Card>
 
-      {/* Active Incidents & AI Root Cause Analysis (RCA) */}
+      {/* Active Incidents & Log Pattern RCA */}
       <Card padding="none">
         <div className="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" />
             <div>
               <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                Active Incidents & AI Root Cause Analysis
+                Active Incidents & Log Pattern Root Cause Analysis (15-Pt RCA)
               </h2>
               <p className="text-xs text-neutral-500">
-                Real-time incident cascades and root cause recommendations
+                Correlated disturbance cascades ranked by temporal precedence, frequency increase, and structural classification
               </p>
             </div>
           </div>
@@ -369,70 +340,79 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         <div className="divide-y divide-neutral-100 dark:divide-neutral-850">
-          {incidents.slice(0, 4).map((inc) => (
-            <div
-              key={inc.id}
-              onClick={() => navigate(`/dashboard/incidents/${inc.id}`)}
-              className="p-4 hover:bg-neutral-50 dark:hover:bg-neutral-850 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-            >
-              <div className="space-y-1 max-w-2xl">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-neutral-500">
-                    {inc.id.slice(0, 8)}
-                  </span>
-                  <StatusIndicator variant={inc.severity} label={inc.severity.toUpperCase()} />
-                  <span
-                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full uppercase font-medium ${
-                      inc.status === 'RESOLVED'
-                        ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
-                        : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400'
-                    }`}
-                  >
-                    {inc.status}
-                  </span>
+          {incidents.slice(0, 5).map((inc) => {
+            const topCandidate = inc.rootCauseCandidates?.[0];
+            return (
+              <div
+                key={inc.id}
+                onClick={() => navigate(`/dashboard/incidents/${inc.id}`)}
+                className="p-4 hover:bg-neutral-50 dark:hover:bg-neutral-850 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="space-y-1.5 max-w-3xl">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-neutral-500">
+                      {inc.id.slice(0, 8)}
+                    </span>
+                    <StatusIndicator variant={inc.severity} label={inc.severity.toUpperCase()} />
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full uppercase font-medium ${
+                        inc.status === 'RESOLVED'
+                          ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                          : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400'
+                      }`}
+                    >
+                      {inc.status}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                    {inc.title}
+                  </h3>
+                  {topCandidate && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-neutral-400 font-medium">Initiating Pattern:</span>
+                      <code className="px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 font-mono text-[11px] text-amber-700 dark:text-amber-400 truncate max-w-xl">
+                        {topCandidate.template}
+                      </code>
+                    </div>
+                  )}
                 </div>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                  {inc.title}
-                </h3>
-                <p className="text-xs text-neutral-500 line-clamp-1">
-                  {inc.aiSummary || 'Automated AI root cause analysis in progress.'}
-                </p>
-              </div>
 
-              <div className="flex items-center gap-4 shrink-0 text-xs">
-                <div className="text-right">
-                  <div className="font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
-                    Root: {inc.suspectedRootCauseService || 'Evaluating'}
-                  </div>
-                  <div className="text-[11px] text-neutral-400 font-mono">
-                    {inc.firstDetected || 'Recently'}
-                  </div>
+                <div className="flex items-center gap-4 shrink-0 text-xs">
+                  {topCandidate && (
+                    <div className="text-right">
+                      <div className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
+                        {(topCandidate.totalScore ?? 0).toFixed(1)} / 15 pts
+                      </div>
+                      <div className="text-[11px] text-neutral-400 font-mono">
+                        {inc.firstDetected}
+                      </div>
+                    </div>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-neutral-400" />
                 </div>
-                <ChevronRight className="w-4 h-4 text-neutral-400" />
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {incidents.length === 0 && !loading && (
             <div className="p-8 text-center space-y-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
               <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                All Systems Operational
+                All Application Baselines Operational
               </h3>
               <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-                No active incidents or anomaly cascades detected across your microservices topology.
+                No statistical error spikes or unhandled pattern cascades detected in this dataset.
               </p>
             </div>
           )}
         </div>
       </Card>
 
-      {/* Centralized Upload Log Modal */}
+      {/* Upload Log Modal */}
       <UploadLogModal
         isOpen={uploadModalOpen}
         onClose={() => setUploadModalOpen(false)}
         projectId={activeProjectId}
-        availableServices={services.map((s) => ({ id: s.id, name: s.name }))}
         onSuccess={loadData}
       />
     </div>

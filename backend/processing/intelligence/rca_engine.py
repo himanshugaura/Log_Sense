@@ -1,59 +1,49 @@
-import math
-import json
 import logging
 import uuid
+import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Any, Set
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger("logsense.rca")
 
-# Configurable Scoring Factor Weights (Section 14: 30%, 25%, 25%, 20%)
-DEFAULT_WEIGHTS = {
-    "temporal": 0.30,
-    "dependency": 0.25,
-    "error_type": 0.25,
-    "trace": 0.20,
-}
-
-# Direct Root Cause Signatures (originating resource/system failure)
-ROOT_CAUSE_PATTERNS = [
-    "pool exhausted", "connection pool", "connection refused",
-    "deadlock", "out of memory", "oom", "disk full", "ioexception",
-    "fatal exception", "panic", "segmentation fault", "table lock"
+# Direct Root Cause Signatures (originating resource/system failure, assigning 3 classification points)
+DIRECT_ROOT_CAUSE_KEYWORDS = [
+    "connection broken", "connection refused", "broken pipe", "closed socket",
+    "socket closed", "pool exhausted", "connection pool", "deadlock",
+    "out of memory", "oom", "disk full", "ioexception", "fatal exception",
+    "panic", "segmentation fault", "table lock", "cannot open channel",
+    "unexpected exception causing shutdown", "server not running", "not running",
 ]
 
-# Propagated Downstream Symptoms (failures caused by a dependency)
-SYMPTOM_PATTERNS = [
-    "timeout connecting", "circuit breaker", "downstream", "failed due to",
-    "gateway timeout", "502", "503", "504", "transaction aborted",
-    "request failed", "operation cancelled", "latency high"
+# Secondary / Propagated Symptom Keywords (assigning 2 classification points)
+SECONDARY_SYMPTOM_KEYWORDS = [
+    "interrupted while waiting", "interrupted", "leaving thread", "interrupting sendworker",
+    "timeout", "timed out", "notification time out", "circuit breaker",
+    "failed due to", "502", "503", "504", "queue full", "retry",
+    "request failed", "session termination", "expiring session", "goodbye",
 ]
 
 class RcaEngine:
     """
-    Deterministic evidence-based Root Cause Analysis (RCA) engine.
-    Ranks candidate microservices using independent signals:
-    1. Temporal score (decay over delta seconds)
-    2. Transitive dependency topology score (depth and callers count in DAG)
-    3. Error type score (root-cause vs. symptom classification)
-    4. Distributed trace score (deepest failing span/sink)
+    Implements Part 7 of the LogSense Specification:
+    Deterministic, point-based Root Cause Analysis ranking candidate log clusters (max 15 points):
+    1. Temporal precedence (max 4 points)
+    2. Frequency increase (max 4 points)
+    3. Error classification (max 3 points)
+    4. Relationship with affected clusters (max 4 points)
+    Ranks candidate clusters from highest to lowest.
     """
-    def __init__(self, db: Session, weights: Optional[Dict[str, float]] = None):
+    def __init__(self, db: Session):
         self.db = db
-        self.weights = weights or DEFAULT_WEIGHTS
 
     def analyze_incident(self, incident_id: str) -> Optional[dict]:
-        logger.info(f"Running RCA for incident {incident_id}")
+        logger.info(f"Running point-based log pattern RCA for incident {incident_id}")
 
-        # 1. Fetch incident details and linked anomalies
+        # 1. Fetch incident and linked anomalies
         incident = self.db.execute(
-            text("""
-                SELECT id, "projectId", title, severity, "startedAt"
-                FROM incidents
-                WHERE id = :id
-            """),
+            text("SELECT id, \"projectId\", title, severity, \"startedAt\" FROM incidents WHERE id = :id"),
             {"id": incident_id}
         ).fetchone()
 
@@ -63,14 +53,14 @@ class RcaEngine:
 
         project_id = str(incident[1])
 
-        # Fetch anomalies linked to this incident
         anomalies = self.db.execute(
             text("""
-                SELECT a.id, a."serviceId", a.severity, a."firstDetectedAt",
-                       a.title, a.evidence, s.name as service_name
+                SELECT a.id, a."clusterId", a.severity, a."firstDetectedAt",
+                       a.title, a.evidence, a."anomalyType", a."occurrenceCount",
+                       lc.template
                 FROM incident_anomalies ia
                 JOIN anomalies a ON ia."anomalyId" = a.id
-                LEFT JOIN services s ON a."serviceId" = s.id
+                LEFT JOIN log_clusters lc ON a."clusterId" = lc.id
                 WHERE ia."incidentId" = :inc_id
                 ORDER BY a."firstDetectedAt" ASC
             """),
@@ -81,237 +71,254 @@ class RcaEngine:
             logger.warn(f"No linked anomalies found for incident {incident_id}")
             return None
 
-        # 2. Identify candidate services
-        candidate_services: Dict[str, dict] = {}
+        # 2. Extract candidate clusters from anomalies
+        candidate_clusters: Dict[str, dict] = {}
+        affected_clusters_pool: Set[str] = set()
+
         for a in anomalies:
-            sid = str(a[1]) if a[1] else "unassigned"
-            sname = str(a[6]) if a[6] else "unassigned"
+            cid = str(a[1]) if a[1] else None
             t_first = a[3]
             ev = a[5] if isinstance(a[5], dict) else {}
+            a_type = a[6]
+            occ_count = a[7] or 1
+            template = str(a[8]) if a[8] else str(a[4])
 
-            if sid not in candidate_services:
-                candidate_services[sid] = {
-                    "serviceId": sid if sid != "unassigned" else None,
-                    "serviceName": sname,
+            # Track affected clusters referenced in evidence
+            if isinstance(ev, dict) and "affectedClusters" in ev:
+                for aff in ev["affectedClusters"]:
+                    if isinstance(aff, dict) and "clusterId" in aff:
+                        affected_clusters_pool.add(str(aff["clusterId"]))
+
+            if not cid:
+                continue
+
+            if cid not in candidate_clusters:
+                candidate_clusters[cid] = {
+                    "clusterId": cid,
+                    "template": template,
                     "earliestTime": t_first,
-                    "anomalies": [],
+                    "anomalyTypes": {a_type},
+                    "maxOccurrence": occ_count,
+                    "maxZScore": 0.0,
                     "evidenceList": [],
-                    "traces": set(),
                 }
+            else:
+                if t_first < candidate_clusters[cid]["earliestTime"]:
+                    candidate_clusters[cid]["earliestTime"] = t_first
+                candidate_clusters[cid]["anomalyTypes"].add(a_type)
+                candidate_clusters[cid]["maxOccurrence"] = max(candidate_clusters[cid]["maxOccurrence"], occ_count)
 
-            if t_first < candidate_services[sid]["earliestTime"]:
-                candidate_services[sid]["earliestTime"] = t_first
-
-            candidate_services[sid]["anomalies"].append(a)
             if isinstance(ev, dict):
-                candidate_services[sid]["evidenceList"].append(ev)
-                if "traceIds" in ev:
-                    candidate_services[sid]["traces"].update(ev["traceIds"])
+                detection = ev.get("detection", {})
+                if "zScore" in detection:
+                    candidate_clusters[cid]["maxZScore"] = max(
+                        candidate_clusters[cid]["maxZScore"],
+                        float(detection["zScore"])
+                    )
+                candidate_clusters[cid]["evidenceList"].append(ev)
 
-        if not candidate_services:
+        if not candidate_clusters:
+            logger.info(f"No candidate clusters to evaluate for incident {incident_id}")
             return None
 
-        # 3. Load dependency topology for this project and compute transitive dependents
-        dep_rows = self.db.execute(
-            text("""
-                SELECT "sourceServiceId", "targetServiceId", "isRequired"
-                FROM service_dependencies
-                WHERE "sourceServiceId" IN (SELECT id FROM services WHERE "projectId" = :project_id)
-            """),
-            {"project_id": project_id}
-        ).fetchall()
+        # Determine earliest timestamp across all candidates
+        overall_earliest = min(c["earliestTime"] for c in candidate_clusters.values())
 
-        # dependents_of[target] = direct caller sources
-        direct_dependents_of: Dict[str, Set[str]] = {}
-        for r in dep_rows:
-            src, tgt = str(r[0]), str(r[1])
-            direct_dependents_of.setdefault(tgt, set()).add(src)
+        scored_candidates = []
 
-        # Transitive closure: all services that directly or indirectly depend on `tgt`
-        transitive_dependents_of: Dict[str, Set[str]] = {}
-        all_sids = list(candidate_services.keys()) + list(direct_dependents_of.keys())
-        for s in all_sids:
-            visited: Set[str] = set()
-            queue = list(direct_dependents_of.get(s, set()))
-            while queue:
-                curr = queue.pop(0)
-                if curr not in visited:
-                    visited.add(curr)
-                    queue.extend(direct_dependents_of.get(curr, set()))
-            transitive_dependents_of[s] = visited
+        for cid, cand in candidate_clusters.items():
+            template_lower = cand["template"].lower()
+            t_time = cand["earliestTime"]
+            z_score = cand["maxZScore"]
+            max_occ = cand["maxOccurrence"]
 
-        # 4. Calculate factor scores for each candidate
-        global_min_time = min(cand["earliestTime"] for cand in candidate_services.values())
-
-        candidate_scores = []
-        for sid, cand in candidate_services.items():
-            # A. Temporal score: 100 * exp(-delta / 120s)
-            delta_sec = max(0.0, (cand["earliestTime"] - global_min_time).total_seconds())
-            temporal_score = 100.0 * math.exp(-delta_sec / 120.0)
-
-            # B. Transitive Dependency Score:
-            # Services with more downstream dependents (e.g., database) get higher root cause weight
-            num_transitive_deps = len(transitive_dependents_of.get(sid, set()))
-            if num_transitive_deps >= 2:
-                dependency_score = 100.0
-            elif num_transitive_deps == 1:
-                dependency_score = 75.0
+            # --- Signal 1: Temporal Precedence (max 4 points) ---
+            # 4: Clearly abnormal before other affected patterns (>= 60s earlier)
+            # 3: Slightly earlier (10-59s earlier)
+            # 2: Approximately simultaneous (within 10s of earliest)
+            # 1: Appeared after other patterns
+            # 0: Insufficient temporal evidence
+            delta_seconds = (t_time - overall_earliest).total_seconds()
+            if delta_seconds == 0.0:
+                # Appeared at the earliest recorded time
+                other_times = [c["earliestTime"] for c_id, c in candidate_clusters.items() if c_id != cid]
+                if other_times and min(other_times) > t_time:
+                    lead_seconds = (min(other_times) - t_time).total_seconds()
+                    temporal_points = 4.0 if lead_seconds >= 60 else 3.0
+                else:
+                    temporal_points = 2.0
+            elif delta_seconds <= 15.0:
+                temporal_points = 2.0
             else:
-                dependency_score = 30.0
+                temporal_points = 1.0
 
-            # C. Error Type Score: Originating resource failure vs. downstream symptom
-            matched_root = []
-            matched_symptom = []
-
-            for ev in cand["evidenceList"]:
-                text_content = f"{ev.get('sampleMessage', '')} {ev.get('template', '')}".lower()
-                for rkw in ROOT_CAUSE_PATTERNS:
-                    if rkw in text_content:
-                        matched_root.append(rkw)
-                for skw in SYMPTOM_PATTERNS:
-                    if skw in text_content:
-                        matched_symptom.append(skw)
-
-            if matched_root and not matched_symptom:
-                error_type_score = 95.0
-            elif matched_root and matched_symptom:
-                error_type_score = 75.0
-            elif matched_symptom:
-                error_type_score = 35.0
+            # --- Signal 2: Frequency Increase (max 4 points) ---
+            # 4: Extreme (Z >= 8 or count >= 100)
+            # 3: Significant (Z >= 5 or count >= 25)
+            # 2: Moderate (Z >= 3 or count >= 10)
+            # 1: Small (Z >= 2 or count >= 3)
+            # 0: None
+            if z_score >= 8.0 or max_occ >= 100:
+                frequency_points = 4.0
+            elif z_score >= 5.0 or max_occ >= 25:
+                frequency_points = 3.0
+            elif z_score >= 3.0 or max_occ >= 10:
+                frequency_points = 2.0
+            elif z_score >= 2.0 or max_occ >= 3:
+                frequency_points = 1.0
             else:
-                error_type_score = 50.0
+                frequency_points = 0.0
 
-            # D. Trace Score:
-            # If trace data is available across candidates
-            trace_score: Optional[float] = None
-            if cand["traces"]:
-                # If caller services share this trace, this candidate is an implicated span
-                has_downstream_match = False
-                for other_sid, other_cand in candidate_services.items():
-                    if other_sid != sid and (cand["traces"] & other_cand["traces"]):
-                        has_downstream_match = True
-                        break
-                trace_score = 90.0 if has_downstream_match else 60.0
-
-            # Calculate weighted total, normalizing across available factors
-            available_weights = {
-                "temporal": self.weights["temporal"],
-                "dependency": self.weights["dependency"],
-                "error_type": self.weights["error_type"],
-            }
-            if trace_score is not None:
-                available_weights["trace"] = self.weights["trace"]
-
-            weight_sum = sum(available_weights.values())
-            total_score = (
-                (temporal_score * available_weights["temporal"]) +
-                (dependency_score * available_weights["dependency"]) +
-                (error_type_score * available_weights["error_type"]) +
-                ((trace_score or 0.0) * available_weights.get("trace", 0.0))
-            ) / weight_sum
-
-            # Construct transparent human-readable explanation
-            explanation_parts = []
-            if delta_sec < 1.0:
-                explanation_parts.append("Earliest detected failure in incident timeline.")
+            # --- Signal 3: Error Classification (max 3 points) ---
+            # Assign 0-3 points depending on how specific and explanatory the failure signal is
+            if any(k in template_lower for k in DIRECT_ROOT_CAUSE_KEYWORDS):
+                classification_points = 3.0
+                class_desc = "Direct root-cause structural failure signature (connection/resource/crash)"
+            elif any(k in template_lower for k in SECONDARY_SYMPTOM_KEYWORDS):
+                classification_points = 2.0
+                class_desc = "Secondary operational degradation symptom (interruption/timeout/termination)"
+            elif "error" in template_lower or "exception" in template_lower:
+                classification_points = 1.0
+                class_desc = "General application exception"
             else:
-                explanation_parts.append(f"Errors began {delta_sec:.1f}s after initial incident onset.")
+                classification_points = 0.0
+                class_desc = "Informational/warning event"
 
-            if num_transitive_deps > 0:
-                explanation_parts.append(f"{num_transitive_deps} service(s) directly or transitively depend on this service.")
+            # --- Signal 4: Relationship with Affected Clusters (max 4 points) ---
+            # Does this pattern explain other affected patterns?
+            # 4: Strongly explains several affected patterns
+            # 3: Plausibly explains multiple patterns
+            # 2: Related to some patterns
+            # 1: Weak relationship
+            # 0: No evidence
+            rel_score = 0.0
+            # If this is a direct root cause (e.g. connection broken) and other clusters had queue timeouts/interrupted threads
+            if classification_points >= 2.0 and len(candidate_clusters) > 1:
+                rel_score += 2.0
+            if cid in affected_clusters_pool or any(cid in str(c.get("evidenceList")) for c in candidate_clusters.values()):
+                rel_score += 1.0
+            if len(candidate_clusters) >= 3 and classification_points == 3.0:
+                rel_score += 1.0
+            relationship_points = min(4.0, rel_score)
 
-            if matched_root:
-                explanation_parts.append(f"Error signatures indicate primary resource failure: '{matched_root[0]}'.")
-            elif matched_symptom:
-                explanation_parts.append(f"Error messages indicate downstream failure symptom: '{matched_symptom[0]}'.")
+            # Total RCA Score = Temporal + Frequency + Classification + Relationship (max 15)
+            total_rca_score = (
+                temporal_points
+                + frequency_points
+                + classification_points
+                + relationship_points
+            )
 
-            explanation = " ".join(explanation_parts)
+            explanation = (
+                f"Pattern '{cand['template'][:70]}' scored {total_rca_score:.1f}/15 pts: "
+                f"Temporal={temporal_points:.0f}/4, Frequency={frequency_points:.0f}/4 (Z={z_score:.1f}, count={max_occ}), "
+                f"Classification={classification_points:.0f}/3 ({class_desc}), "
+                f"Relationship={relationship_points:.0f}/4."
+            )
 
-            candidate_scores.append({
-                "serviceId": cand["serviceId"],
-                "serviceName": cand["serviceName"],
-                "temporalScore": round(temporal_score, 2),
-                "dependencyScore": round(dependency_score, 2),
-                "errorTypeScore": round(error_type_score, 2),
-                "traceScore": round(trace_score, 2) if trace_score is not None else None,
-                "totalScore": round(total_score, 2),
+            scored_candidates.append({
+                "clusterId": cid,
+                "template": cand["template"],
+                "totalScore": round(total_rca_score, 1),
+                "temporalPoints": temporal_points,
+                "frequencyPoints": frequency_points,
+                "classificationPoints": classification_points,
+                "relationshipPoints": relationship_points,
                 "explanation": explanation,
-                "earliestTime": cand["earliestTime"],
+                "maxOccurrence": max_occ,
+                "maxZScore": z_score,
+                "evidence": {
+                    "earliestTime": t_time.isoformat(),
+                    "maxOccurrence": max_occ,
+                    "maxZScore": round(z_score, 2),
+                    "scoring": {
+                        "temporalPoints": temporal_points,
+                        "frequencyPoints": frequency_points,
+                        "classificationPoints": classification_points,
+                        "relationshipPoints": relationship_points,
+                        "totalScore": round(total_rca_score, 1),
+                        "maxPossible": 15,
+                    },
+                },
             })
 
-        # Rank candidates by totalScore DESC
-        candidate_scores.sort(key=lambda x: x["totalScore"], reverse=True)
-        for i, c in enumerate(candidate_scores):
-            c["rank"] = i + 1
+        # Rank candidates from highest to lowest score
+        scored_candidates.sort(key=lambda x: x["totalScore"], reverse=True)
 
-        top_candidate = candidate_scores[0]
-        confidence = min(0.98, max(0.40, top_candidate["totalScore"] / 100.0))
-        conclusion = (
-            f"Primary root cause identified as '{top_candidate['serviceName']}' with "
-            f"{confidence * 100:.1f}% confidence. {top_candidate['explanation']}"
-        )
+        for rank_idx, c in enumerate(scored_candidates):
+            c["rank"] = rank_idx + 1
 
-        # 5. Persist into rca_analyses and root_cause_candidates
+        top_candidate = scored_candidates[0]
+        confidence = min(0.95, round(top_candidate["totalScore"] / 15.0, 2))
+
+        # Check if top candidates are too close or inconclusive
+        conclusion = top_candidate["template"]
+        if len(scored_candidates) > 1:
+            diff = top_candidate["totalScore"] - scored_candidates[1]["totalScore"]
+            if diff < 1.0 and top_candidate["totalScore"] < 7.0:
+                conclusion = f"INCONCLUSIVE: Close scores between '{top_candidate['template'][:40]}' ({top_candidate['totalScore']}) and '{scored_candidates[1]['template'][:40]}' ({scored_candidates[1]['totalScore']})"
+
+        # Persist RCA Analysis and Candidates
         analysis_id = str(uuid.uuid4())
-        analysis_data = {
-            "incidentId": incident_id,
-            "topCandidate": top_candidate["serviceName"],
-            "candidatesCount": len(candidate_scores),
-            "scoringWeights": self.weights,
-        }
+
+        # Clean existing RCA records for this incident
+        self.db.execute(
+            text("DELETE FROM rca_analyses WHERE \"incidentId\" = :inc_id"),
+            {"inc_id": incident_id}
+        )
 
         self.db.execute(
             text("""
-                INSERT INTO rca_analyses (
-                    id, "incidentId", conclusion, confidence, "analysisData", "createdAt"
-                ) VALUES (
-                    :id, :inc_id, :conclusion, :confidence, CAST(:data AS jsonb), NOW()
-                )
+                INSERT INTO rca_analyses (id, "incidentId", conclusion, confidence, "analysisData", "createdAt")
+                VALUES (:id, :inc_id, :conclusion, :confidence, CAST(:data AS jsonb), NOW())
             """),
             {
                 "id": analysis_id,
                 "inc_id": incident_id,
                 "conclusion": conclusion,
                 "confidence": confidence,
-                "data": json.dumps(analysis_data),
+                "data": json.dumps({"candidatesCount": len(scored_candidates)}),
             }
         )
 
-        for c in candidate_scores:
-            if c["serviceId"]:
-                self.db.execute(
-                    text("""
-                        INSERT INTO root_cause_candidates (
-                            id, "analysisId", "serviceId", "totalScore",
-                            "temporalScore", "dependencyScore", "errorTypeScore",
-                            "traceScore", explanation, rank
-                        ) VALUES (
-                            :id, :analysis_id, :service_id, :total,
-                            :temporal, :dep, :err, :trace, :explanation, :rank
-                        )
-                    """),
-                    {
-                        "id": str(uuid.uuid4()),
-                        "analysis_id": analysis_id,
-                        "service_id": c["serviceId"],
-                        "total": c["totalScore"],
-                        "temporal": c["temporalScore"],
-                        "dep": c["dependencyScore"],
-                        "err": c["errorTypeScore"],
-                        "trace": c["traceScore"] if c["traceScore"] is not None else 0.0,
-                        "explanation": c["explanation"],
-                        "rank": c["rank"],
-                    }
-                )
+        for cand in scored_candidates:
+            self.db.execute(
+                text("""
+                    INSERT INTO root_cause_candidates (
+                        id, "analysisId", "clusterId", template,
+                        "totalScore", "temporalPoints", "frequencyPoints",
+                        "classificationPoints", "relationshipPoints",
+                        explanation, rank, evidence
+                    ) VALUES (
+                        :id, :analysis_id, :cluster_id, :template,
+                        :total_score, :temporal_pts, :frequency_pts,
+                        :class_pts, :rel_pts,
+                        :explanation, :rank, CAST(:evidence AS jsonb)
+                    )
+                """),
+                {
+                    "id": str(uuid.uuid4()),
+                    "analysis_id": analysis_id,
+                    "cluster_id": cand["clusterId"],
+                    "template": cand["template"],
+                    "total_score": cand["totalScore"],
+                    "temporal_pts": cand["temporalPoints"],
+                    "frequency_pts": cand["frequencyPoints"],
+                    "class_pts": cand["classificationPoints"],
+                    "rel_pts": cand["relationshipPoints"],
+                    "explanation": cand["explanation"],
+                    "rank": cand["rank"],
+                    "evidence": json.dumps(cand["evidence"]),
+                }
+            )
 
         self.db.commit()
-        logger.info(f"RCA analysis {analysis_id} saved for incident {incident_id}. Winner: {top_candidate['serviceName']}")
 
         return {
             "analysisId": analysis_id,
             "incidentId": incident_id,
-            "conclusion": conclusion,
             "confidence": confidence,
             "topCandidate": top_candidate,
-            "candidates": candidate_scores,
+            "candidates": scored_candidates,
+            "conclusion": conclusion,
         }

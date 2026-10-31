@@ -15,7 +15,7 @@ export const clusterIdParamSchema = z.object({
 });
 
 export const uploadLogBodySchema = z.object({
-  serviceId: z.string().uuid("Invalid service ID format").optional().or(z.literal("")).nullable(),
+  serviceName: z.string().optional().nullable(),
   sourceType: z
     .enum(["FILE_UPLOAD", "FILE", "API", "OTEL"])
     .transform((val) => (val === "FILE" ? "FILE_UPLOAD" : val))
@@ -24,24 +24,23 @@ export const uploadLogBodySchema = z.object({
 });
 
 export const listLogSourcesQuerySchema = z.object({
-  serviceId: z.string().uuid("Invalid service ID format").optional(),
+  search: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export const listLogClustersQuerySchema = z.object({
-  serviceId: z.string().uuid("Invalid service ID format").optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 export const listLogEntriesQuerySchema = z.object({
-  serviceId: z.string().uuid("Invalid service ID format").optional(),
   sourceId: z.string().uuid("Invalid log source ID format").optional(),
   clusterId: z.string().uuid("Invalid cluster ID format").optional(),
   level: z.string().optional(),
   search: z.string().optional(),
+  serviceName: z.string().optional(),
   startTime: z.string().datetime({ offset: true }).optional(),
   endTime: z.string().datetime({ offset: true }).optional(),
   page: z.coerce.number().int().min(1).default(1),

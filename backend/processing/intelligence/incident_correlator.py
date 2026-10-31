@@ -1,13 +1,12 @@
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger("logsense.correlation")
 
-# Priority ranking for severity escalation
 SEVERITY_ORDER = {
     "CRITICAL": 4,
     "HIGH": 3,
@@ -15,68 +14,54 @@ SEVERITY_ORDER = {
     "LOW": 1,
 }
 
+CORRELATION_WINDOW_MINUTES = 5
+
 def correlate_incidents(db: Session, project_id: str) -> List[str]:
     """
-    Groups correlated anomalies into actionable incidents using:
-    1. Temporal Proximity (within 15 minutes).
-    2. Directed Service Dependencies (source/target topology).
-    3. Shared Trace IDs.
-    Returns list of incident IDs created or updated.
+    Implements Part 6 of the LogSense Specification:
+    Groups related statistical anomalies into coherent incidents when there is
+    evidence of a common disturbance:
+    1. Same project / dataset analysis.
+    2. Temporal proximity within a 5-minute correlation window.
+    3. Plausible relationships or shared affected clusters.
+    Avoids duplicate incidents by accumulating anomaly evidence into active incidents.
     """
     logger.info(f"Running incident correlation for project {project_id}")
 
-    # 1. Fetch project service dependencies
-    dep_rows = db.execute(
-        text("""
-            SELECT "sourceServiceId", "targetServiceId", "isRequired"
-            FROM service_dependencies
-            WHERE "sourceServiceId" IN (SELECT id FROM services WHERE "projectId" = :project_id)
-        """),
-        {"project_id": project_id}
-    ).fetchall()
-
-    direct_deps: Dict[str, Set[str]] = {}
-    for r in dep_rows:
-        src, tgt = str(r[0]), str(r[1])
-        direct_deps.setdefault(src, set()).add(tgt)
-        direct_deps.setdefault(tgt, set()).add(src)
-
-    # 2. Fetch unlinked or recent actionable anomalies (ESCALATE, MONITOR)
+    # 1. Fetch actionable anomalies (ESCALATE, MONITOR, ACTIVE)
     anomalies = db.execute(
         text("""
-            SELECT a.id, a."serviceId", a.severity, a.status, a."firstDetectedAt",
-                   a.title, a.evidence, s.name as service_name
+            SELECT a.id, a."clusterId", a.severity, a.status, a."firstDetectedAt",
+                   a.title, a.evidence, a."anomalyType", lc.template
             FROM anomalies a
-            LEFT JOIN services s ON a."serviceId" = s.id
+            LEFT JOIN log_clusters lc ON a."clusterId" = lc.id
             WHERE a."projectId" = :project_id
-              AND a.status IN ('ESCALATE', 'MONITOR')
             ORDER BY a."firstDetectedAt" ASC
         """),
         {"project_id": project_id}
     ).fetchall()
 
     if not anomalies:
-        logger.info("No actionable anomalies to correlate.")
+        logger.info("No anomalies available for correlation.")
         return []
 
-    # 3. Fetch existing OPEN incidents for this project
-    open_incidents = db.execute(
+    # 2. Fetch existing OPEN incidents for this project
+    open_incidents_rows = db.execute(
         text("""
-            SELECT i.id, i.severity, i.status, i."startedAt"
+            SELECT i.id, i.severity, i.status, i."startedAt", i.title
             FROM incidents i
             WHERE i."projectId" = :project_id AND i.status = 'OPEN'
-            ORDER BY i."startedAt" DESC
+            ORDER BY i."startedAt" ASC
         """),
         {"project_id": project_id}
     ).fetchall()
 
     active_incidents = []
-    for inc in open_incidents:
+    for inc in open_incidents_rows:
         inc_id = str(inc[0])
-        # Fetch associated anomaly services and traces
         linked = db.execute(
             text("""
-                SELECT a."serviceId", a.evidence
+                SELECT a.id, a."clusterId", a."firstDetectedAt", a.evidence
                 FROM incident_anomalies ia
                 JOIN anomalies a ON ia."anomalyId" = a.id
                 WHERE ia."incidentId" = :inc_id
@@ -84,35 +69,39 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             {"inc_id": inc_id}
         ).fetchall()
 
-        service_ids = {str(l[0]) for l in linked if l[0]}
-        traces = set()
+        cluster_ids = {str(l[1]) for l in linked if l[1]}
+        earliest_time = inc[3]
+        latest_time = inc[3]
         for l in linked:
-            ev = l[1] if isinstance(l[1], dict) else {}
-            if isinstance(ev, dict) and "traceIds" in ev:
-                traces.update(ev["traceIds"])
+            t = l[2]
+            if t < earliest_time:
+                earliest_time = t
+            if t > latest_time:
+                latest_time = t
 
         active_incidents.append({
             "id": inc_id,
             "severity": inc[1],
-            "startedAt": inc[3],
-            "service_ids": service_ids,
-            "traces": traces,
+            "title": inc[4],
+            "startedAt": earliest_time,
+            "lastEventAt": latest_time,
+            "cluster_ids": cluster_ids,
+            "anomaly_ids": {str(l[0]) for l in linked},
         })
 
     affected_incident_ids: Set[str] = set()
 
-    # 4. Correlate each anomaly
     for a in anomalies:
         a_id = str(a[0])
-        a_svc = str(a[1]) if a[1] else None
+        a_cid = str(a[1]) if a[1] else None
         a_sev = str(a[2])
-        a_time = a[4]
+        a_time: datetime = a[4]
         a_title = str(a[5])
         a_ev = a[6] if isinstance(a[6], dict) else {}
-        a_traces = set(a_ev.get("traceIds", [])) if isinstance(a_ev, dict) else set()
-        a_svc_name = str(a[7]) if a[7] else "Microservices"
+        a_type = str(a[7])
+        a_template = str(a[8]) if a[8] else a_title
 
-        # Check if anomaly is already linked to an incident
+        # Check if already linked
         already_linked = db.execute(
             text("SELECT \"incidentId\" FROM incident_anomalies WHERE \"anomalyId\" = :a_id LIMIT 1"),
             {"a_id": a_id}
@@ -122,34 +111,35 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             affected_incident_ids.add(str(already_linked[0]))
             continue
 
+        # Extract affected cluster IDs from evidence if available
+        a_affected_cids = set()
+        if isinstance(a_ev, dict) and "affectedClusters" in a_ev:
+            for aff in a_ev["affectedClusters"]:
+                if isinstance(aff, dict) and "clusterId" in aff:
+                    a_affected_cids.add(str(aff["clusterId"]))
+
         matched_incident = None
 
-        # Try to match with existing active incident
+        # Check against active incidents
         for inc in active_incidents:
-            # Temporal proximity check (within 15 minutes)
-            time_diff = abs((a_time - inc["startedAt"]).total_seconds())
-            if time_diff > 15 * 60:
+            # Check 5-minute correlation window against incident event boundary
+            time_delta_to_start = abs((a_time - inc["startedAt"]).total_seconds()) / 60.0
+            time_delta_to_latest = abs((a_time - inc["lastEventAt"]).total_seconds()) / 60.0
+
+            if time_delta_to_latest > CORRELATION_WINDOW_MINUTES and time_delta_to_start > CORRELATION_WINDOW_MINUTES:
                 continue
 
-            # Check shared trace IDs
-            if a_traces and inc["traces"] and (a_traces & inc["traces"]):
+            # Check cluster overlap or affected cluster relationship
+            has_cluster_overlap = a_cid and (a_cid in inc["cluster_ids"])
+            has_affected_overlap = bool(a_affected_cids & inc["cluster_ids"])
+
+            # Within 5-minute disturbance window with shared clusters or overall disturbance
+            if has_cluster_overlap or has_affected_overlap or time_delta_to_latest <= 2.0:
                 matched_incident = inc
                 break
-
-            # Check shared service
-            if a_svc and a_svc in inc["service_ids"]:
-                matched_incident = inc
-                break
-
-            # Check dependency connection
-            if a_svc:
-                connected = direct_deps.get(a_svc, set())
-                if connected & inc["service_ids"]:
-                    matched_incident = inc
-                    break
 
         if matched_incident:
-            # Link to existing incident
+            # Accumulate anomaly evidence into existing incident
             inc_id = matched_incident["id"]
             db.execute(
                 text("""
@@ -160,7 +150,7 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
                 {"id": str(uuid.uuid4()), "inc_id": inc_id, "anomaly_id": a_id}
             )
 
-            # Escalate severity if anomaly is more severe
+            # Escalate severity if new anomaly is higher
             curr_rank = SEVERITY_ORDER.get(matched_incident["severity"], 1)
             new_rank = SEVERITY_ORDER.get(a_sev, 1)
             if new_rank > curr_rank:
@@ -170,16 +160,28 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
                 )
                 matched_incident["severity"] = a_sev
 
-            if a_svc:
-                matched_incident["service_ids"].add(a_svc)
-            matched_incident["traces"].update(a_traces)
+            if a_cid:
+                matched_incident["cluster_ids"].add(a_cid)
+            matched_incident["cluster_ids"].update(a_affected_cids)
+            matched_incident["anomaly_ids"].add(a_id)
+
+            if a_time > matched_incident["lastEventAt"]:
+                matched_incident["lastEventAt"] = a_time
+
             affected_incident_ids.add(inc_id)
 
         else:
-            # Create a new Incident
+            # Create a new Incident with high-signal informative title
             new_inc_id = str(uuid.uuid4())
-            inc_title = f"Incident: {a_sev} issue detected in {a_svc_name}"
-            inc_desc = f"Correlated incident triggered by {a_title} at {a_time.strftime('%Y-%m-%d %H:%M:%S UTC')}."
+            clean_snippet = a_template[:65].strip()
+            if a_type == "NEW_PATTERN":
+                inc_title = f"Incident: New Pattern Emergence '{clean_snippet}'"
+            elif a_type == "SPIKE":
+                inc_title = f"Incident: Critical Spike in '{clean_snippet}'"
+            else:
+                inc_title = f"Incident: {a_sev} Telemetry Anomaly Detected"
+
+            inc_desc = f"Correlated incident initialized by {a_title} at {a_time.strftime('%Y-%m-%d %H:%M:%S UTC')}."
 
             db.execute(
                 text("""
@@ -199,6 +201,7 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
                 }
             )
 
+            # Link anomaly to new incident
             db.execute(
                 text("""
                     INSERT INTO incident_anomalies (id, "incidentId", "anomalyId", "createdAt")
@@ -210,12 +213,15 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             active_incidents.append({
                 "id": new_inc_id,
                 "severity": a_sev,
+                "title": inc_title,
                 "startedAt": a_time,
-                "service_ids": {a_svc} if a_svc else set(),
-                "traces": a_traces,
+                "lastEventAt": a_time,
+                "cluster_ids": {a_cid} if a_cid else set(),
+                "anomaly_ids": {a_id},
             })
+
             affected_incident_ids.add(new_inc_id)
 
     db.commit()
-    logger.info(f"Incident correlation complete. Touched {len(affected_incident_ids)} incidents.")
+    logger.info(f"Incident correlation completed. Total {len(affected_incident_ids)} incidents active/updated.")
     return list(affected_incident_ids)

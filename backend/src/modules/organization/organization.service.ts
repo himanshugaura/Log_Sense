@@ -61,7 +61,8 @@ export class OrganizationService {
             createdAt: true,
             _count: {
               select: {
-                services: true,
+                logSources: true,
+                logEntries: true,
                 incidents: true,
                 anomalies: true,
               },

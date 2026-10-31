@@ -54,7 +54,7 @@ export const ProjectsPage: React.FC = () => {
 
   const handleSelectProject = (project: Project) => {
     selectProject(project.id);
-    navigate(`/projects/${project.id}/services`);
+    navigate('/dashboard');
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -67,7 +67,8 @@ export const ProjectsPage: React.FC = () => {
       setProjectName('');
       setProjectDesc('');
       setModalOpen(false);
-      navigate(`/projects/${created.id}/services`);
+      selectProject(created.id);
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err?.message || 'Failed to create project');
     } finally {
@@ -134,7 +135,6 @@ export const ProjectsPage: React.FC = () => {
         {!loading && displayedProjects.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {displayedProjects.map((proj) => {
-              const servicesCount = proj._count?.services ?? 0;
               return (
                 <Card
                   key={proj.id}
@@ -169,12 +169,13 @@ export const ProjectsPage: React.FC = () => {
 
                   <div className="pt-2 border-t border-neutral-100 dark:border-neutral-850 flex items-center justify-between text-xs text-neutral-500">
                     <div className="flex items-center gap-1.5 font-medium">
-                      <Cpu className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>{servicesCount} {servicesCount === 1 ? 'Microservice' : 'Microservices'}</span>
+                      <span>{proj._count?.logEntries ?? 0} Logs</span>
+                      <span>·</span>
+                      <span>{proj._count?.anomalies ?? 0} Anomalies</span>
                     </div>
 
                     <div className="flex items-center gap-1 font-semibold text-neutral-900 dark:text-neutral-100 group-hover:translate-x-0.5 transition-transform">
-                      <span>Configure Services</span>
+                      <span>Launch Dashboard</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </div>
                   </div>
@@ -195,7 +196,7 @@ export const ProjectsPage: React.FC = () => {
                 No Projects Yet
               </h3>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                Create a project to register microservices and configure the dependency topology DAG.
+                Create a project workspace to ingest logs, run statistical spike detection, and generate point-based RCA.
               </p>
             </div>
 
@@ -212,7 +213,7 @@ export const ProjectsPage: React.FC = () => {
                   Project Name
                 </label>
                 <Input
-                  placeholder="e.g., Production Cluster, Staging Core"
+                  placeholder="e.g., Production Core, Billing Dataset"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   autoFocus
@@ -224,7 +225,7 @@ export const ProjectsPage: React.FC = () => {
                   Description (Optional)
                 </label>
                 <Input
-                  placeholder="e.g., Primary microservices telemetry pipeline"
+                  placeholder="e.g., Primary application log stream"
                   value={projectDesc}
                   onChange={(e) => setProjectDesc(e.target.value)}
                 />
@@ -237,7 +238,7 @@ export const ProjectsPage: React.FC = () => {
                 className="w-full justify-center"
                 disabled={creating || !projectName.trim()}
               >
-                {creating ? 'Creating...' : 'Create Project & Configure Services'}
+                {creating ? 'Creating...' : 'Create Project & Launch Dashboard'}
               </Button>
             </form>
           </div>

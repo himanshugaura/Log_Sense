@@ -1,16 +1,19 @@
-import { Anomaly, SeverityLevel, AnomalyType } from '../types';
+import { Anomaly, SeverityLevel } from '../types';
 import { apiClient } from './api/client';
 
 export interface AnomalyFilterOptions {
-  service?: string;
-  severity?: SeverityLevel | 'all';
-  type?: AnomalyType | 'all';
-  query?: string;
+  severity?: string;
+  status?: string;
+  anomalyType?: string;
+  clusterId?: string;
   page?: number;
   limit?: number;
 }
 
 export const anomalyService = {
+  /**
+   * Fetches statistical anomalies and new patterns for active project
+   */
   async getAnomalies(projectId: string, filters?: AnomalyFilterOptions): Promise<Anomaly[]> {
     if (!apiClient.isBackendConnected || !projectId) {
       return [];
@@ -18,14 +21,17 @@ export const anomalyService = {
 
     try {
       const queryParams = new URLSearchParams();
-      if (filters?.service && filters.service !== 'all') {
-        queryParams.set('serviceId', filters.service);
-      }
       if (filters?.severity && filters.severity !== 'all') {
         queryParams.set('severity', filters.severity.toUpperCase());
       }
-      if (filters?.type && filters.type !== 'all') {
-        queryParams.set('anomalyType', filters.type);
+      if (filters?.status && filters.status !== 'all') {
+        queryParams.set('status', filters.status.toUpperCase());
+      }
+      if (filters?.anomalyType && filters.anomalyType !== 'all') {
+        queryParams.set('anomalyType', filters.anomalyType);
+      }
+      if (filters?.clusterId) {
+        queryParams.set('clusterId', filters.clusterId);
       }
       queryParams.set('page', String(filters?.page || 1));
       queryParams.set('limit', String(filters?.limit || 50));
@@ -33,36 +39,50 @@ export const anomalyService = {
       const res = await apiClient.fetchEndpoint<{
         items: Array<{
           id: string;
-          firstDetectedAt: string;
+          title: string;
+          description?: string;
           anomalyType: string;
           severity: string;
-          score: number;
-          expectedBaseline: number;
-          observedValue: number;
-          service?: { id: string; name: string };
-          cluster?: { id: string; template: string };
+          status: string;
+          occurrenceCount: number;
+          firstDetectedAt: string;
+          lastDetectedAt: string;
+          evidence?: any;
+          cluster?: { id: string; template: string; occurrenceCount: number };
           incidentAnomalies?: Array<{
-            incident?: { id: string; title: string };
+            incident?: { id: string; title: string; severity: string; status: string };
           }>;
         }>;
       }>(`/anomalies/${projectId}?${queryParams.toString()}`);
 
       if (res?.items && Array.isArray(res.items)) {
-        return res.items.map((item) => ({
-          id: item.id,
-          timestamp: new Date(item.firstDetectedAt).toISOString().slice(0, 19).replace('T', ' '),
-          title: `${item.anomalyType.replace(/_/g, ' ').toUpperCase()} in ${item.service?.name || 'Service'}`,
-          type: (item.anomalyType.toLowerCase() as AnomalyType) || 'error_spike',
-          service: item.service?.name || 'unknown-service',
-          severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
-          observedValue: item.observedValue || item.score,
-          expectedBaseline: item.expectedBaseline || 1.0,
-          unit: 'events/min',
-          clusterId: item.cluster?.id || 'CLU-GEN',
-          relatedIncidentId: item.incidentAnomalies?.[0]?.incident?.id,
-          description: item.cluster?.template || `Anomaly detected with score ${item.score.toFixed(2)}`,
-          sampleLogs: [],
-        }));
+        return res.items.map((item) => {
+          const ev = item.evidence || {};
+          const bMean = ev.baseline?.mean ?? 0;
+          const currCount = ev.currentWindow?.count ?? item.occurrenceCount ?? 1;
+          const zScore = ev.detection?.zScore;
+          const points = ev.scoring?.totalPoints ?? ev.scoring?.spikePoints;
+          const affected = ev.affectedClusters || [];
+
+          return {
+            id: item.id,
+            timestamp: new Date(item.firstDetectedAt).toISOString().slice(0, 19).replace('T', ' '),
+            title: item.title,
+            type: item.anomalyType,
+            severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
+            observedValue: currCount,
+            expectedBaseline: bMean,
+            unit: 'logs/min',
+            clusterId: item.cluster?.id || ev.clusterId,
+            clusterTemplate: item.cluster?.template || ev.template,
+            relatedIncidentId: item.incidentAnomalies?.[0]?.incident?.id,
+            description: item.description || item.cluster?.template || 'Statistical anomaly detected.',
+            points,
+            zScore,
+            evidence: ev,
+            affectedClusters: affected,
+          };
+        });
       }
     } catch (err) {
       console.warn(`Could not fetch anomalies for project ${projectId}:`, err);
@@ -81,21 +101,28 @@ export const anomalyService = {
         anomaly: any;
       }>(`/anomalies/${projectId}/${id}`);
       if (res?.anomaly) {
-        const a = res.anomaly;
+        const item = res.anomaly;
+        const ev = item.evidence || {};
+        const bMean = ev.baseline?.mean ?? 0;
+        const currCount = ev.currentWindow?.count ?? item.occurrenceCount ?? 1;
+
         return {
-          id: a.id,
-          timestamp: new Date(a.firstDetectedAt).toISOString().slice(0, 19).replace('T', ' '),
-          title: `${a.anomalyType.replace(/_/g, ' ').toUpperCase()} in ${a.service?.name || 'Service'}`,
-          type: (a.anomalyType.toLowerCase() as AnomalyType) || 'error_spike',
-          service: a.service?.name || 'unknown-service',
-          severity: (a.severity.toLowerCase() as SeverityLevel) || 'high',
-          observedValue: a.observedValue || a.score,
-          expectedBaseline: a.expectedBaseline || 1.0,
-          unit: 'events/min',
-          clusterId: a.cluster?.id || 'CLU-GEN',
-          relatedIncidentId: a.incidentAnomalies?.[0]?.incident?.id,
-          description: a.cluster?.template || `Anomaly detected with score ${a.score}`,
-          sampleLogs: [],
+          id: item.id,
+          timestamp: new Date(item.firstDetectedAt).toISOString().slice(0, 19).replace('T', ' '),
+          title: item.title,
+          type: item.anomalyType,
+          severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
+          observedValue: currCount,
+          expectedBaseline: bMean,
+          unit: 'logs/min',
+          clusterId: item.cluster?.id || ev.clusterId,
+          clusterTemplate: item.cluster?.template || ev.template,
+          relatedIncidentId: item.incidentAnomalies?.[0]?.incident?.id,
+          description: item.description || item.cluster?.template || '',
+          points: ev.scoring?.totalPoints ?? ev.scoring?.spikePoints,
+          zScore: ev.detection?.zScore,
+          evidence: ev,
+          affectedClusters: ev.affectedClusters || [],
         };
       }
     } catch (err) {
