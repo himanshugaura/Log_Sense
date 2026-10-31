@@ -7,7 +7,6 @@ import { clerkMiddleware } from "@clerk/express";
 import { env } from "./core/config/env.js";
 import { errorMiddleware } from "./core/middlewares/error.middleware.js";
 import { notFoundMiddleware } from "./core/middlewares/notFound.middleware.js";
-import { globalRateLimiter } from "./core/middlewares/rateLimiter.middleware.js";
 import { requestLogger } from "./core/middlewares/requestLogger.js";
 import apiRoutes from "./modules/index.route.js";
 
@@ -63,8 +62,6 @@ app.use(
     optionsSuccessStatus: 200,
   }),
 );
-
-app.use(globalRateLimiter);
 
 // Parse JSON body and preserve rawBuffer for webhook signature verification (Svix/Clerk)
 app.use(
