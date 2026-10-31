@@ -181,7 +181,7 @@ export const LogExplorerPage: React.FC = () => {
             Log Stream & Ingestion Explorer
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Directly query parsed log events, inspect Drain3 cluster tags, and upload raw log streams into object storage.
+            Directly query parsed log events, inspect cluster patterns, and upload log streams.
           </p>
         </div>
 
@@ -265,8 +265,8 @@ export const LogExplorerPage: React.FC = () => {
             Showing <strong className="text-neutral-800 dark:text-neutral-200">{logs.length}</strong> of{' '}
             <strong className="text-neutral-800 dark:text-neutral-200">{totalLogs}</strong> matched logs
           </span>
-          <span className="font-mono text-[11px] text-neutral-400">
-            Cluster parser: Drain3 High-Density Tree
+          <span className="text-[11px] text-neutral-400">
+            Real-time clustering active
           </span>
         </div>
       </Card>
@@ -365,7 +365,7 @@ export const LogExplorerPage: React.FC = () => {
                                 </span>
                               </div>
                               <div>
-                                <span className="text-neutral-400 block mb-1">Drain3 Cluster ID:</span>
+                                <span className="text-neutral-400 block mb-1">Cluster ID:</span>
                                 <span className="text-amber-700 dark:text-amber-400 font-semibold">
                                   {log.clusterId}
                                 </span>
@@ -452,11 +452,11 @@ export const LogExplorerPage: React.FC = () => {
                 <UploadCloud className="w-4 h-4" />
               </div>
               <h3 className="font-display text-lg font-bold tracking-tight">
-                Upload Log Stream to S3 & Drain3 Parser
+                Upload Log File
               </h3>
             </div>
             <p className="text-xs text-neutral-500 mb-4">
-              Files are streamed directly into object storage and parsed in real time via our Python FastAPI clustering service.
+              Upload log files for automated clustering and anomaly detection.
             </p>
 
             {uploadError && (
@@ -547,12 +547,12 @@ export const LogExplorerPage: React.FC = () => {
                   <div>
                     <h4 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
                       {uploadState === 'uploading'
-                        ? 'Uploading to Object Storage...'
-                        : 'Drain3 Tree Parser & Statistical Anomaly Engine Running...'}
+                        ? 'Uploading log stream...'
+                        : 'Processing & clustering log stream...'}
                     </h4>
                     <p className="text-[11px] text-neutral-500">
                       {uploadState === 'uploading'
-                        ? 'Writing multipart stream to S3 bucket'
+                        ? 'Transferring log file to storage'
                         : `Processed ${activeJob?.processedLines || 0} lines · ${activeJob?.progressPercentage || 10}%`}
                     </p>
                   </div>
@@ -581,7 +581,7 @@ export const LogExplorerPage: React.FC = () => {
                   <span>Log Ingestion & Anomaly Analysis Complete!</span>
                 </div>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                  Drain3 successfully mined templates and evaluated anomaly burst deviation scores. New entries are now visible in the stream.
+                  Logs processed successfully. New entries and patterns are now available in the stream.
                 </p>
               </div>
             )}

@@ -84,7 +84,7 @@ export const AnomaliesPage: React.FC = () => {
             Anomaly Detection & Timeline
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Statistical frequency deviation tracking, error surges, and Drain3 template novelty emergence.
+            Statistical frequency deviation tracking, error surges, and template novelty emergence.
           </p>
         </div>
 
@@ -121,10 +121,6 @@ export const AnomaliesPage: React.FC = () => {
             <p className="text-xs text-neutral-500">
               Correlated deviation bursts recorded across monitored services
             </p>
-          </div>
-          <div className="flex items-center gap-2 font-mono text-xs text-amber-700 dark:text-amber-500">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            <span>FastAPI Anomaly Detector Active</span>
           </div>
         </div>
 

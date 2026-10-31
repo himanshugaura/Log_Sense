@@ -187,14 +187,11 @@ export const IncidentDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Gemini AI Incident Summary Box */}
+        {/* AI Incident Summary Box */}
         <div className="p-4 sm:p-5 rounded-xl bg-neutral-900 text-neutral-100 dark:bg-black border border-neutral-800 space-y-2.5">
           <div className="flex items-center gap-2 text-amber-400 text-xs font-semibold">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>Gemini AI Incident Executive Brief</span>
-            <span className="text-[10px] font-mono text-neutral-400 ml-auto">
-              Model: gemini-3.5-flash-lite
-            </span>
+            <span>AI Incident Executive Brief</span>
           </div>
           <p className="text-xs sm:text-sm leading-relaxed text-neutral-200 font-sans">
             {incident.aiSummary}
@@ -279,7 +276,7 @@ export const IncidentDetailPage: React.FC = () => {
       {activeTab === 'rca' && (
         <div className="space-y-4">
           <div className="p-3.5 rounded-xl bg-neutral-100/70 dark:bg-neutral-900/70 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400">
-            Our deterministic RCA algorithm ranks candidates based on 4 independent factors: <strong>(1) Temporal Precedence</strong> (earliest anomaly), <strong>(2) Topology Centrality</strong> (DAG upstream impact), <strong>(3) Error Volume Surge</strong> (Poisson/Z-score deviation), and <strong>(4) Novelty</strong> (new Drain3 template emergence).
+            Our deterministic RCA algorithm ranks candidates based on 4 independent factors: <strong>(1) Temporal Precedence</strong> (earliest anomaly), <strong>(2) Topology Centrality</strong> (DAG upstream impact), <strong>(3) Error Volume Surge</strong> (Poisson/Z-score deviation), and <strong>(4) Novelty</strong> (new pattern novelty).
           </div>
 
           <div className="space-y-4">

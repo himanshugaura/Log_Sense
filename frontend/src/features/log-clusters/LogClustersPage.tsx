@@ -105,7 +105,7 @@ export const LogClustersPage: React.FC = () => {
             Log Template Clusters
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            High-efficiency Drain3 tree parsing converts millions of unstructured log lines into reusable constant templates.
+            Automated template clustering groups recurring log lines into reusable structured patterns.
           </p>
         </div>
 

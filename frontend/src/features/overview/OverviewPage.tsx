@@ -6,12 +6,9 @@ import {
   AlertTriangle,
   Flame,
   Network,
-  ArrowUpRight,
   RefreshCw,
-  Clock,
   ChevronRight,
   UploadCloud,
-  ShieldAlert,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -24,7 +21,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
-import { useAuth, SignInButton } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/clerk-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusIndicator } from '../../components/ui/Badge';
@@ -98,23 +95,6 @@ export const OverviewPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Auth Banner if not signed in */}
-      {!isSignedIn && (
-        <div className="p-4 rounded-2xl border border-amber-300/60 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5">
-            <ShieldAlert className="w-4 h-4 text-amber-700 dark:text-amber-500 shrink-0" />
-            <span className="text-amber-900 dark:text-amber-200">
-              You are currently viewing in unauthenticated mode. Sign in with Clerk to access your real PostgreSQL database records and live S3 log streams.
-            </span>
-          </div>
-          <SignInButton mode="modal">
-            <Button variant="primary" size="sm" className="shrink-0">
-              Sign In to Cloud
-            </Button>
-          </SignInButton>
-        </div>
-      )}
-
       {/* Page Title & Status Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-neutral-200 dark:border-neutral-800">
         <div>
@@ -195,7 +175,7 @@ export const OverviewPage: React.FC = () => {
               {anomalies.length}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {anomalies.length > 0 ? 'Drain3 statistical spikes' : '0 anomalies'}
+              {anomalies.length > 0 ? 'Statistical spikes' : '0 anomalies'}
             </p>
           </div>
         </Card>
@@ -288,7 +268,7 @@ export const OverviewPage: React.FC = () => {
                       No Log Data Ingested
                     </h3>
                     <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                      Upload your first raw log file (.log, .txt, .csv) to begin Drain3 template parsing and real-time anomaly discovery.
+                      Upload your first raw log file (.log, .txt, .csv) to begin template parsing and real-time anomaly discovery.
                     </p>
                   </div>
                   <Button
@@ -301,16 +281,6 @@ export const OverviewPage: React.FC = () => {
                   </Button>
                 </div>
               )}
-            </div>
-
-            <div className="pt-3 border-t border-neutral-100 dark:border-neutral-850 flex items-center justify-between text-xs text-neutral-500">
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-neutral-400" />
-                <span>Backend API endpoint active</span>
-              </span>
-              <span className="font-mono text-amber-600 dark:text-amber-500 font-medium">
-                FastAPI Processing Engine
-              </span>
             </div>
           </Card>
         </div>

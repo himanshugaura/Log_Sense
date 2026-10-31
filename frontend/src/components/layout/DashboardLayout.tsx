@@ -99,9 +99,6 @@ export const DashboardLayout: React.FC = () => {
             </div>
             <span>LogSense</span>
           </Link>
-          <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded">
-            v1.0
-          </span>
         </div>
 
         {/* Real Backend Project Selector in Sidebar */}
@@ -164,18 +161,8 @@ export const DashboardLayout: React.FC = () => {
           })}
         </nav>
 
-        {/* Sidebar Footer info */}
-        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 space-y-2">
-          <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800/80 text-xs">
-            <div className="flex items-center justify-between text-neutral-600 dark:text-neutral-400 mb-1">
-              <span className="font-medium">Backend Pipeline</span>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-medium">ONLINE</span>
-            </div>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-500 leading-tight">
-              Drain3 tree parser + 4-factor RCA & Gemini engine active.
-            </p>
-          </div>
-
+        {/* Sidebar Footer */}
+        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800">
           <Link
             to="/"
             className="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 px-2 py-1 transition-colors"
@@ -218,11 +205,6 @@ export const DashboardLayout: React.FC = () => {
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-800 px-2.5 py-1 rounded-lg">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>FastAPI & Drain3: Ready</span>
-            </div>
-
             <button
               type="button"
               onClick={toggleTheme}

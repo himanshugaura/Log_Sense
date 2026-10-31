@@ -265,7 +265,7 @@ export const LandingPage: React.FC = () => {
                   {/* Template clustering visual snapshot */}
                   <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 sm:p-4 bg-neutral-50/50 dark:bg-neutral-900/50">
                     <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
-                      <span className="font-medium">Extracted Log Template (Drain3 Pattern)</span>
+                      <span className="font-medium">Extracted Log Template (Clustered Pattern)</span>
                       <span className="font-mono text-[11px]">1,482 occurrences</span>
                     </div>
                     <div className="p-2.5 rounded-lg bg-neutral-900 text-neutral-100 font-mono text-xs overflow-x-auto whitespace-pre">
