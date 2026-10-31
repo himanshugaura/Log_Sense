@@ -419,9 +419,6 @@ export const IncidentDetailPage: React.FC = () => {
             <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-neutral-100">
               What might be causing it?
             </h2>
-            <p className="text-xs text-neutral-500">
-              Plain-English root cause assessment derived from application event logs
-            </p>
           </div>
         </div>
 
