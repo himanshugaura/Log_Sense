@@ -97,7 +97,7 @@ if (
 
 app.use(requestLogger);
 
-app.get("/", (_req: Request, res: Response) => {
+app.get(["/", "/health"], (_req: Request, res: Response) => {
   res.status(StatusCodes.OK).json({
     success: true,
     message: "LogSense Backend REST API is running",
