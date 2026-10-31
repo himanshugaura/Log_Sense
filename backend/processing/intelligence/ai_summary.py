@@ -51,7 +51,7 @@ def generate_incident_summary(
     used_model = "rule-based-synthesizer"
 
     if os.getenv("GEMINI_API_KEY"):
-        used_model = model_name or "gemini-2.0-flash"
+        used_model = model_name or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
         try:
             prompt = f"""You are an expert Site Reliability Engineer analyzing a production incident.
 Deterministic Root Cause Analysis has produced the following evidence:
