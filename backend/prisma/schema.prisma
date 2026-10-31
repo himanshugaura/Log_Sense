@@ -106,14 +106,18 @@ model ServiceDependency {
 model LogSource {
   id         String   @id @default(uuid())
   projectId  String
-  serviceId  String
+  serviceId  String?
   name       String
-  sourceType String
+  sourceType String   @default("FILE_UPLOAD")
+  fileKey    String?
+  fileSize   Int?
+  fileType   String?
   createdAt  DateTime @default(now())
 
-  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service    Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  logEntries LogEntry[]
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  service        Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  logEntries     LogEntry[]
+  processingJobs ProcessingJob[]
 
   @@index([projectId])
   @@index([serviceId])
@@ -123,7 +127,7 @@ model LogSource {
 model LogEntry {
   id                String   @id @default(uuid())
   projectId         String
-  serviceId         String
+  serviceId         String?
   sourceId          String
   clusterId         String?
   timestamp         DateTime
@@ -135,7 +139,7 @@ model LogEntry {
   metadata          Json?
 
   project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service Service?    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   source  LogSource   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   cluster LogCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
 
@@ -154,12 +158,12 @@ model LogEntry {
 model ParserState {
   id        String   @id @default(uuid())
   projectId String
-  serviceId String
+  serviceId String?
   stateData String   @db.Text
   updatedAt DateTime @updatedAt
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service     Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service     Service?     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   logClusters LogCluster[]
 
   @@index([projectId])
@@ -180,6 +184,7 @@ model LogCluster {
   logEntries  LogEntry[]
   anomalies   Anomaly[]
 
+  @@unique([parserStateId, drainClusterId])
   @@index([parserStateId])
   @@index([drainClusterId])
   @@map("log_clusters")
@@ -188,17 +193,20 @@ model LogCluster {
 model ProcessingJob {
   id             String    @id @default(uuid())
   projectId      String
-  jobType        String
-  status         String
+  logSourceId    String?
+  jobType        String    @default("LOG_INGESTION")
+  status         String    @default("PENDING")
   totalItems     Int       @default(0)
   processedItems Int       @default(0)
   errorMessage   String?   @db.Text
   createdAt      DateTime  @default(now())
   completedAt    DateTime?
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  logSource LogSource? @relation(fields: [logSourceId], references: [id], onDelete: SetNull)
 
   @@index([projectId, status])
+  @@index([logSourceId])
   @@map("processing_jobs")
 }
 
@@ -209,7 +217,7 @@ model ProcessingJob {
 model Anomaly {
   id              String   @id @default(uuid())
   projectId       String
-  serviceId       String
+  serviceId       String?
   clusterId       String?
   anomalyType     String
   title           String
@@ -222,11 +230,12 @@ model Anomaly {
   evidence        Json?
 
   project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  service           Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service           Service?          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   cluster           LogCluster?       @relation(fields: [clusterId], references: [id], onDelete: SetNull)
   incidentAnomalies IncidentAnomaly[]
 
   @@index([projectId, status])
+  @@index([projectId, firstDetectedAt])
   @@index([serviceId])
   @@index([severity])
   @@index([clusterId])

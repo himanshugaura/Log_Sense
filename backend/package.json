@@ -28,6 +28,8 @@
   "author": "himan",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1160.0",
+    "@aws-sdk/s3-request-presigner": "^3.1160.0",
     "@clerk/express": "^2.1.85",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.2",
@@ -39,6 +41,7 @@
     "http-status-codes": "^2.3.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
+    "multer": "^2.5.0",
     "svix": "^2.9.1",
     "winston": "^3.18.3",
     "zod": "^4.1.11"
@@ -50,6 +53,7 @@
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.3.0",
     "@types/node": "^24.5.2",
     "eslint": "^9.0.0",
     "globals": "^15.0.0",

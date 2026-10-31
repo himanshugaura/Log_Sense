@@ -12,6 +12,16 @@ dist
 build
 *.tsbuildinfo
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+ENV/
+.pytest_cache/
+
 # Logs
 *.log
 npm-debug.log*
@@ -24,3 +34,4 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
