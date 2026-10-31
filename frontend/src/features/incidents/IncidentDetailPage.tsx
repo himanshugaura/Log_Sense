@@ -12,7 +12,6 @@ import {
   RefreshCw,
   ArrowDown,
   Layers,
-  HelpCircle,
   Search,
   Server,
   Activity,
@@ -35,56 +34,6 @@ import { incidentService } from '../../services/incident-service';
 import { logService } from '../../services/log-service';
 import { useProject } from '../../context/ProjectContext';
 import { normalizeLogTemplate } from '../../utils/template-normalizer';
-
-const getPatternExplanationFallback = (template: string) => {
-  const t = (template || '').toLowerCase();
-  if (t.includes('hikaripool') || t.includes('connection pool') || t.includes('pool')) {
-    return {
-      component: 'Database Connection Pool',
-      explanation:
-        'This message is associated with the application database connection pool. It generally indicates that all available database connections were exhausted, causing incoming requests to wait and time out.',
-    };
-  }
-  if (
-    t.includes('connection broken') ||
-    t.includes('closed socket') ||
-    t.includes('connection reset') ||
-    t.includes('broken pipe') ||
-    t.includes('connection refused')
-  ) {
-    return {
-      component: 'TCP / Network Socket Layer',
-      explanation:
-        'This message is associated with network communication channels. It generally indicates that an active network connection was abruptly closed or reset by the remote peer or an intermediary gateway.',
-    };
-  }
-  if (t.includes('sendworker') || t.includes('interrupted') || t.includes('thread') || t.includes('worker')) {
-    return {
-      component: 'Asynchronous Worker Thread Pool',
-      explanation:
-        'This message is associated with internal background task executors. It generally indicates that an active communication worker thread was forcibly interrupted due to an upstream connection failure.',
-    };
-  }
-  if (t.includes('session') || t.includes('timed out') || t.includes('timeout')) {
-    return {
-      component: 'Distributed Session & Heartbeat State',
-      explanation:
-        'This message is associated with cluster consensus and session leasing. It indicates that missed heartbeat signals exceeded the lease window, triggering session expiration.',
-    };
-  }
-  if (t.includes('ioexception') || t.includes('disk') || t.includes('file')) {
-    return {
-      component: 'File System & Storage',
-      explanation:
-        'This message is associated with local disk or socket I/O operations. It indicates an operating system level failure while reading or writing data.',
-    };
-  }
-  return {
-    component: 'Application Service Runtime',
-    explanation:
-      'This message indicates an unhandled error condition or operational exception caught during request execution.',
-  };
-};
 
 export const IncidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -242,19 +191,6 @@ export const IncidentDetailPage: React.FC = () => {
     explanation:
       'Our analysis identifies the most likely explanation from available logs. Further investigation is needed to confirm the actual cause.',
   };
-
-  // Unfamiliar log patterns list
-  const unfamiliarPatterns =
-    report?.unfamiliarPatterns && report.unfamiliarPatterns.length > 0
-      ? report.unfamiliarPatterns
-      : incident.rootCauseCandidates.slice(0, 2).map((c) => {
-          const exp = getPatternExplanationFallback(c.template || '');
-          return {
-            pattern: c.template || 'HikariPool-1 - Connection is not available',
-            component: exp.component,
-            explanation: exp.explanation,
-          };
-        });
 
   // Scoring data for technical drawer
   const rcaScore = topCandidate?.totalScore ?? 14;
@@ -561,50 +497,7 @@ export const IncidentDetailPage: React.FC = () => {
       </div>
 
       {/* =========================================================================
-          SECTION 5: UNFAMILIAR LOG PATTERNS EXPLAINED
-          ========================================================================= */}
-      <Card padding="lg" className="space-y-4">
-        <div className="flex items-center gap-2.5 pb-3 border-b border-neutral-100 dark:border-neutral-850">
-          <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
-            <HelpCircle className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-neutral-100">
-              Unfamiliar Log Patterns Explained
-            </h2>
-            <p className="text-xs text-neutral-500">
-              Technical error messages translated into simpler language:
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-          {unfamiliarPatterns.map((pat, idx) => (
-            <div
-              key={idx}
-              className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 space-y-2.5 flex flex-col justify-between"
-            >
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                    {pat.component}
-                  </span>
-                </div>
-                <p className="font-mono text-xs font-semibold text-neutral-900 dark:text-neutral-100 break-words">
-                  {pat.pattern}
-                </p>
-              </div>
-
-              <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed font-sans pt-1 border-t border-neutral-200 dark:border-neutral-800">
-                {pat.explanation}
-              </p>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* =========================================================================
-          SECTION 6: EXPANDABLE TECHNICAL EVIDENCE & SCORING (FOR DEVELOPERS)
+          SECTION 5: EXPANDABLE TECHNICAL EVIDENCE & SCORING (FOR DEVELOPERS)
           ========================================================================= */}
       <div className="border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden bg-neutral-50/60 dark:bg-neutral-900/40">
         <button
