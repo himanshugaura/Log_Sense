@@ -56,7 +56,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const found = orgs.find((o) => o.id === activeOrganizationId);
         if (!found) {
           const firstOrgId = orgs[0].id;
-          setActiveOrganizationId(firstOrgId);
+          setActiveOrganizationId((prev) => (prev === firstOrgId ? prev : firstOrgId));
           localStorage.setItem(ACTIVE_ORG_KEY, firstOrgId);
         }
       } else {
@@ -81,7 +81,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (list.length > 0) {
         const found = list.find((p) => p.id === activeProjectId);
         const resolvedId = found ? found.id : list[0].id;
-        setActiveProjectId(resolvedId);
+        setActiveProjectId((prev) => (prev === resolvedId ? prev : resolvedId));
         localStorage.setItem(ACTIVE_PROJECT_KEY, resolvedId);
         if (list[0].organizationId && !activeOrganizationId) {
           setActiveOrganizationId(list[0].organizationId);

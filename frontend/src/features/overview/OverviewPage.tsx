@@ -11,7 +11,6 @@ import {
   Sparkles,
   ChevronRight,
   TrendingUp,
-  FolderTree,
   FileText,
   Clock,
   ShieldCheck,
@@ -32,6 +31,7 @@ import { Button } from '../../components/ui/Button';
 import { StatusIndicator } from '../../components/ui/Badge';
 import { useTheme } from '../../context/ThemeContext';
 import { useProject } from '../../context/ProjectContext';
+import { apiClient } from '../../services/api/client';
 import { incidentService } from '../../services/incident-service';
 import { anomalyService } from '../../services/anomaly-service';
 import { logService } from '../../services/log-service';
@@ -46,7 +46,6 @@ export const OverviewPage: React.FC = () => {
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
-  const [clusters, setClusters] = useState<LogCluster[]>([]);
   const [logSource, setLogSource] = useState<any | null>(null);
   const [logCount, setLogCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -59,19 +58,17 @@ export const OverviewPage: React.FC = () => {
       return;
     }
     try {
-      const [incList, anomList, clustersList, logsRes, sourcesList] = await Promise.all([
+      const [incList, anomList, sourcesList] = await Promise.all([
         incidentService.getIncidents(activeProjectId),
         anomalyService.getAnomalies(activeProjectId),
-        logService.getLogClusters(activeProjectId),
-        logService.getLogs(activeProjectId, { limit: 1 }),
         logService.getLogSources(activeProjectId),
       ]);
 
       setIncidents(incList);
       setAnomalies(anomList);
-      setClusters(clustersList);
-      setLogCount(logsRes.total || activeProject?._count?.logEntries || 0);
-      setLogSource(sourcesList.length > 0 ? sourcesList[0] : null);
+      const firstSource = sourcesList.length > 0 ? sourcesList[0] : null;
+      setLogSource(firstSource);
+      setLogCount(firstSource?._count?.logEntries || activeProject?._count?.logEntries || 0);
     } catch (err) {
       console.warn('Failed to load overview data:', err);
     } finally {
@@ -81,12 +78,12 @@ export const OverviewPage: React.FC = () => {
   };
 
   useEffect(() => {
-    setLoading(true);
     loadData();
-  }, [activeProjectId, isSignedIn]);
+  }, [activeProjectId]);
 
   const handleRefresh = () => {
     setRefreshing(true);
+    apiClient.clearCache();
     loadData();
   };
 
@@ -279,15 +276,15 @@ export const OverviewPage: React.FC = () => {
 
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Drain3 Clusters</span>
-            <FolderTree className="w-4 h-4 text-amber-500" />
+            <span>Detected Anomalies</span>
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <div className="mt-2.5">
             <span className="font-mono text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
-              {clusters.length}
+              {anomalies.length}
             </span>
             <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
-              Structured patterns mined
+              Statistical deviations flagged
             </p>
           </div>
         </Card>

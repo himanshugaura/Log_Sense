@@ -2,6 +2,7 @@ import { StatusCodes } from "http-status-codes";
 
 import { prisma } from "../../core/config/db.js";
 import ApiError from "../../shared/utils/ApiError.js";
+import { memoryCache } from "../../shared/utils/cache.js";
 import type { CreateProjectInput, UpdateProjectInput } from "./project.validation.js";
 
 export class ProjectService {
@@ -9,6 +10,10 @@ export class ProjectService {
    * Validates whether an organization exists and is owned by the user
    */
   async validateOrganizationOwnership(organizationId: string, userId: string) {
+    const cacheKey = `org_owner:${organizationId}:${userId}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
     const organization = await prisma.organization.findUnique({
       where: { id: organizationId },
       select: { id: true, ownerId: true },
@@ -22,6 +27,7 @@ export class ProjectService {
       throw new ApiError(StatusCodes.FORBIDDEN, "Forbidden: You do not own the target organization");
     }
 
+    memoryCache.set(cacheKey, organization, 120);
     return organization;
   }
 
@@ -57,6 +63,7 @@ export class ProjectService {
       },
     });
 
+    memoryCache.invalidatePrefix(`user_projects:${userId}`);
     return project;
   }
 
@@ -64,6 +71,10 @@ export class ProjectService {
    * Retrieves all projects under organizations owned by the user
    */
   async getUserProjects(userId: string, organizationId?: string) {
+    const cacheKey = `user_projects:${userId}:${organizationId || 'all'}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
     if (organizationId) {
       await this.validateOrganizationOwnership(organizationId, userId);
     }
@@ -137,6 +148,7 @@ export class ProjectService {
       projects = [defaultProject];
     }
 
+    memoryCache.set(cacheKey, projects, 20);
     return projects;
   }
 

@@ -8,6 +8,7 @@ import { logger } from "../../core/config/logger.js";
 import { prisma } from "../../core/config/db.js";
 import { storageService } from "../../core/services/storage.service.js";
 import ApiError from "../../shared/utils/ApiError.js";
+import { memoryCache } from "../../shared/utils/cache.js";
 import type {
   GetLogClustersQuery,
   GetLogEntriesQuery,
@@ -20,6 +21,10 @@ export class LogService {
    * Validates whether a project exists and is owned by the user
    */
   async validateProjectOwnership(projectId: string, userId: string) {
+    const cacheKey = `proj_owner:${projectId}:${userId}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
@@ -37,6 +42,7 @@ export class LogService {
       throw new ApiError(StatusCodes.FORBIDDEN, "Forbidden: You do not have access to this project");
     }
 
+    memoryCache.set(cacheKey, project, 120);
     return project;
   }
 
@@ -102,6 +108,13 @@ export class LogService {
     } catch (err: any) {
       logger.warn(`Notice during cleanup of previous project telemetry: ${err?.message}`);
     }
+
+    // Invalidate cached data for this project
+    memoryCache.invalidatePrefix(`incidents_list:${params.projectId}`);
+    memoryCache.invalidatePrefix(`anomalies_list:${params.projectId}`);
+    memoryCache.invalidatePrefix(`clusters_list:${params.projectId}`);
+    memoryCache.invalidatePrefix(`logs_list:${params.projectId}`);
+    memoryCache.invalidatePrefix(`log_sources:${params.projectId}`);
 
     // 4. Create fresh LogSource and ProcessingJob
     const logSource = await prisma.logSource.create({
@@ -301,6 +314,10 @@ export class LogService {
   async getLogSources(projectId: string, userId: string, query: GetLogSourcesQuery) {
     await this.validateProjectOwnership(projectId, userId);
 
+    const cacheKey = `log_sources:${projectId}:${query.search || ''}:${query.page || 1}:${query.limit || 20}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
     const where: any = { projectId };
     if (query.search && query.search.trim().length > 0) {
       where.name = { contains: query.search.trim(), mode: "insensitive" };
@@ -337,7 +354,7 @@ export class LogService {
       }),
     ]);
 
-    return {
+    const result = {
       items,
       pagination: {
         page,
@@ -346,6 +363,9 @@ export class LogService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    memoryCache.set(cacheKey, result, 20);
+    return result;
   }
 
   /**
@@ -420,7 +440,7 @@ export class LogService {
       }),
     ]);
 
-    return {
+    const result = {
       items,
       pagination: {
         page,
@@ -429,6 +449,9 @@ export class LogService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    memoryCache.set(cacheKey, result, 20);
+    return result;
   }
 
   /**
@@ -537,7 +560,7 @@ export class LogService {
       }),
     ]);
 
-    return {
+    const result = {
       items,
       pagination: {
         page,
@@ -546,6 +569,9 @@ export class LogService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    memoryCache.set(cacheKey, result, 20);
+    return result;
   }
 
   /**
@@ -578,7 +604,7 @@ export class LogService {
       }),
     ]);
 
-    return {
+    const result = {
       items,
       pagination: {
         page,
@@ -587,6 +613,9 @@ export class LogService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    memoryCache.set(cacheKey, result, 20);
+    return result;
   }
 
   /**

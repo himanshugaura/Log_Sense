@@ -2,10 +2,15 @@ import { StatusCodes } from "http-status-codes";
 
 import { prisma } from "../../core/config/db.js";
 import ApiError from "../../shared/utils/ApiError.js";
+import { memoryCache } from "../../shared/utils/cache.js";
 import type { ListIncidentsQuery, UpdateIncidentStatusBody } from "./incident.validation.js";
 
 export class IncidentService {
   async validateProjectOwnership(projectId: string, userId: string) {
+    const cacheKey = `proj_owner:${projectId}:${userId}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
@@ -23,11 +28,18 @@ export class IncidentService {
       throw new ApiError(StatusCodes.FORBIDDEN, "Forbidden: You do not have access to this project");
     }
 
+    memoryCache.set(cacheKey, project, 120);
     return project;
   }
 
   async getIncidents(projectId: string, userId: string, query: ListIncidentsQuery) {
     await this.validateProjectOwnership(projectId, userId);
+
+    const cacheKey = `incidents_list:${projectId}:${query.severity || ''}:${query.status || ''}:${query.page || 1}:${query.limit || 20}`;
+    const cachedResult = memoryCache.get<any>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
 
     const where: any = { projectId };
     if (query.severity) where.severity = query.severity;
@@ -83,7 +95,7 @@ export class IncidentService {
       }),
     ]);
 
-    return {
+    const result = {
       items,
       pagination: {
         page,
@@ -92,10 +104,17 @@ export class IncidentService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    memoryCache.set(cacheKey, result, 20); // 20s TTL
+    return result;
   }
 
   async getIncidentById(projectId: string, incidentId: string, userId: string) {
     await this.validateProjectOwnership(projectId, userId);
+
+    const cacheKey = `incident_detail:${projectId}:${incidentId}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
 
     const incident = await prisma.incident.findFirst({
       where: { id: incidentId, projectId },
@@ -130,6 +149,7 @@ export class IncidentService {
       throw new ApiError(StatusCodes.NOT_FOUND, "Incident not found");
     }
 
+    memoryCache.set(cacheKey, incident, 20);
     return incident;
   }
 
@@ -156,6 +176,10 @@ export class IncidentService {
         resolvedAt: body.status === "RESOLVED" ? new Date() : null,
       },
     });
+
+    // Invalidate caches immediately
+    memoryCache.invalidatePrefix(`incidents_list:${projectId}`);
+    memoryCache.delete(`incident_detail:${projectId}:${incidentId}`);
 
     return updated;
   }
