@@ -236,6 +236,14 @@ export class LogService {
       }
     }
 
+    // On Windows, prefer pythonw.exe to run completely headless without opening a terminal window
+    if (isWindows) {
+      const pythonwCand = pythonBin.replace(/python\.exe$/i, "pythonw.exe");
+      if (fs.existsSync(pythonwCand)) {
+        pythonBin = pythonwCand;
+      }
+    }
+
     const scriptCandidates = [
       path.resolve(process.cwd(), "processing", "run_job.py"),
       path.resolve(process.cwd(), "backend", "processing", "run_job.py"),
@@ -266,10 +274,18 @@ export class LogService {
       args.push("--local-path", payload.filePath);
     }
 
-    logger.info(`Spawning background Python worker: ${pythonBin} ${args.join(" ")}`);
+    logger.info(`Spawning background Python worker silently: ${pythonBin} ${args.join(" ")}`);
+
+    // Redirect worker stdout and stderr to a log file instead of inheriting the console
+    const logDir = path.resolve(process.cwd(), "tmp");
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    const logFile = path.resolve(logDir, "worker.log");
+    const outFd = fs.openSync(logFile, "a");
 
     const child = spawn(pythonBin, args, {
-      stdio: "inherit",
+      stdio: ["ignore", outFd, outFd],
       detached: true,
       windowsHide: true,
     });
