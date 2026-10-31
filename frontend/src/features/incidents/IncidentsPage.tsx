@@ -130,8 +130,6 @@ export const IncidentsPage: React.FC = () => {
       {/* Incidents List */}
       <div className="space-y-3.5">
         {incidents.map((inc) => {
-          const topCandidate = inc.rootCauseCandidates?.[0];
-
           return (
             <Card
               key={inc.id}
@@ -171,25 +169,11 @@ export const IncidentsPage: React.FC = () => {
                     </p>
                   </div>
 
-                  <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 max-w-4xl leading-relaxed">
-                    {inc.aiSummary}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                    <span className="text-neutral-400">Suspected Root Cause Pattern:</span>
-                    <span className="font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded max-w-lg truncate">
-                      {inc.suspectedRootCauseTemplate || topCandidate?.template || 'Evaluating patterns'}
-                    </span>
-
-                    {topCandidate && (
-                      <>
-                        <span className="text-neutral-300 dark:text-neutral-700">·</span>
-                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">
-                          {topCandidate.totalScore} / 15 pts RCA
-                        </span>
-                      </>
-                    )}
-                  </div>
+                  {inc.aiSummary && inc.aiSummary !== 'Point-based log pattern RCA in progress.' && (
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 max-w-4xl leading-relaxed">
+                      {inc.aiSummary}
+                    </p>
+                  )}
                 </div>
 
                 {/* Action Button */}
