@@ -61,7 +61,7 @@ Primary Root Cause Service: {culprit_name} (Confidence: {confidence * 100:.1f}%)
 RCA Explanation: {top_candidate.get('explanation', '')}
 
 Candidate Rankings:
-{json.dumps(candidates, indent=2)}
+{json.dumps(candidates, indent=2, default=str)}
 
 Please write an incident summary with:
 1. Executive Incident Overview

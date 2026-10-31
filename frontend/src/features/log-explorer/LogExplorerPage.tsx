@@ -27,6 +27,7 @@ import { LogEntry, ServiceNodeData, ProcessingJob } from '../../types';
 import { logService } from '../../services/log-service';
 import { serviceMapService } from '../../services/service-map-service';
 import { useProject } from '../../context/ProjectContext';
+import { UploadLogModal } from '../../components/modals/UploadLogModal';
 
 export const LogExplorerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -50,16 +51,8 @@ export const LogExplorerPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
-  // Real Backend Multipart Upload Workflow
+  // Upload modal visibility
   const [uploadModalOpen, setUploadModalOpen] = useState(urlUpload);
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadServiceId, setUploadServiceId] = useState<string>('all');
-  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle');
-  const [activeJob, setActiveJob] = useState<ProcessingJob | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load available services for filter & upload
   useEffect(() => {
@@ -75,17 +68,6 @@ export const LogExplorerPage: React.FC = () => {
       setUploadModalOpen(true);
     }
   }, [urlService, urlUpload]);
-
-  useEffect(() => {
-    if (urlService && services.length > 0) {
-      const match = services.find(
-        (s) => s.name.toLowerCase() === urlService.toLowerCase() || s.id === urlService
-      );
-      if (match) {
-        setUploadServiceId(match.id);
-      }
-    }
-  }, [urlService, services]);
 
   const fetchLogs = async () => {
     if (!activeProjectId) return;
@@ -112,92 +94,10 @@ export const LogExplorerPage: React.FC = () => {
     fetchLogs();
   }, [activeProjectId, selectedService, selectedLevel, searchQuery, currentPage]);
 
-  // Clean up polling timer
-  useEffect(() => {
-    return () => {
-      if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-    };
-  }, []);
-
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 1500);
-  };
-
-  const handleFileSelect = (file: File) => {
-    const validExtensions = ['.log', '.txt', '.csv', '.json'];
-    const hasValidExt = validExtensions.some((ext) => file.name.toLowerCase().endsWith(ext));
-
-    if (!hasValidExt) {
-      setUploadError('Invalid file type. Please upload a .log, .txt, .csv, or .json file.');
-      return;
-    }
-
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError('File size exceeds the 50MB limit.');
-      return;
-    }
-
-    setUploadFile(file);
-    setUploadError(null);
-    setUploadState('idle');
-  };
-
-  const handleStartUpload = async () => {
-    if (!uploadFile || !activeProjectId) return;
-    setUploadState('uploading');
-    setUploadError(null);
-
-    try {
-      const res = await logService.uploadLogFile(
-        activeProjectId,
-        uploadFile,
-        uploadServiceId !== 'all' ? uploadServiceId : undefined
-      );
-
-      setUploadState('processing');
-      const jobId = res.processingJob?.id;
-
-      // Poll job progress
-      if (jobId) {
-        pollingTimerRef.current = setInterval(async () => {
-          try {
-            const jobs = await logService.getProcessingJobs(activeProjectId);
-            const current = jobs.find((j) => j.id === jobId);
-            if (current) {
-              setActiveJob(current);
-              if (current.status === 'COMPLETED') {
-                if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-                setUploadState('success');
-                fetchLogs();
-              } else if (current.status === 'FAILED') {
-                if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-                setUploadState('error');
-                setUploadError(current.errorMessage || 'Log parsing and anomaly detection failed');
-              }
-            }
-          } catch (err) {
-            console.warn('Job polling error:', err);
-          }
-        }, 1500);
-      } else {
-        setUploadState('success');
-        fetchLogs();
-      }
-    } catch (err: any) {
-      setUploadState('error');
-      setUploadError(err.message || 'File upload failed');
-    }
-  };
-
-  const resetUploadModal = () => {
-    if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-    setUploadFile(null);
-    setUploadState('idle');
-    setUploadError(null);
-    setActiveJob(null);
-    setUploadModalOpen(false);
   };
 
   return (
@@ -498,211 +398,19 @@ export const LogExplorerPage: React.FC = () => {
         )}
       </Card>
 
-      {/* Real Multipart Log File Upload Modal */}
-      {uploadModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs" onClick={resetUploadModal} />
-          <div className="relative w-full max-w-xl rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#121212] p-6 shadow-xl text-neutral-900 dark:text-neutral-100">
-            <button
-              onClick={resetUploadModal}
-              className="absolute right-4 top-4 p-1 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2.5 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-neutral-900 dark:bg-white flex items-center justify-center text-white dark:text-neutral-900">
-                <UploadCloud className="w-4 h-4" />
-              </div>
-              <h3 className="font-display text-lg font-bold tracking-tight">
-                Upload Log File
-              </h3>
-            </div>
-            <p className="text-xs text-neutral-500 mb-4">
-              Upload log files for automated clustering and anomaly detection.
-            </p>
-
-            {uploadError && (
-              <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{uploadError}</span>
-              </div>
-            )}
-
-            {services.length === 0 ? (
-              <div className="py-6 text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center mx-auto text-amber-700 dark:text-amber-400">
-                  <Network className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                    Microservice Required Before Log Ingestion
-                  </h4>
-                  <p className="text-xs text-neutral-500 mt-1 max-w-sm mx-auto">
-                    In LogSense, telemetry logs must be mapped to a microservice in your topology. Please register at least one service before uploading logs.
-                  </p>
-                </div>
-                <div className="flex items-center justify-center gap-2 pt-2">
-                  <Button variant="ghost" size="sm" onClick={resetUploadModal}>
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => {
-                      resetUploadModal();
-                      navigate('/dashboard/service-map');
-                    }}
-                    icon={<Plus className="w-3.5 h-3.5" />}
-                  >
-                    Register Service Now
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Target Service Option */}
-                <div className="mb-4">
-                  <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 block mb-1">
-                    Associate with Service (Optional)
-                  </label>
-                  <select
-                    value={uploadServiceId}
-                    onChange={(e) => setUploadServiceId(e.target.value)}
-                    className="w-full text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3 py-2 text-neutral-900 dark:text-neutral-100 focus:outline-none"
-                  >
-                    <option value="all">Auto-detect from log entries</option>
-                    {services.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Drop Zone */}
-                {uploadState === 'idle' && (
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                      if (e.dataTransfer.files?.[0]) {
-                        handleFileSelect(e.dataTransfer.files[0]);
-                      }
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors ${
-                      isDragging
-                        ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-neutral-850'
-                        : 'border-neutral-300 dark:border-neutral-700 hover:border-neutral-400'
-                    }`}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".log,.txt,.csv,.json"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files?.[0]) handleFileSelect(e.target.files[0]);
-                      }}
-                    />
-                    <FileUp className="w-8 h-8 mx-auto mb-2 text-neutral-400" />
-                    {uploadFile ? (
-                      <div>
-                        <span className="font-semibold text-xs text-neutral-900 dark:text-neutral-100 block">
-                          {uploadFile.name}
-                        </span>
-                        <span className="text-[11px] text-neutral-400">
-                          {(uploadFile.size / 1024).toFixed(1)} KB · Ready to upload
-                        </span>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
-                          Click to choose or drag raw log file here
-                        </p>
-                        <p className="text-[11px] text-neutral-400 mt-1">
-                          Supports .log, .txt, .csv, and JSON formats up to 50MB
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Uploading or Processing Progress */}
-                {(uploadState === 'uploading' || uploadState === 'processing') && (
-                  <div className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <Loader2 className="w-5 h-5 text-amber-600 dark:text-amber-500 animate-spin shrink-0" />
-                      <div>
-                        <h4 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                          {uploadState === 'uploading'
-                            ? 'Uploading log stream...'
-                            : 'Processing & clustering log stream...'}
-                        </h4>
-                        <p className="text-[11px] text-neutral-500">
-                          {uploadState === 'uploading'
-                            ? 'Transferring log file to storage'
-                            : `Processed ${activeJob?.processedLines || 0} lines · ${activeJob?.progressPercentage || 10}%`}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-amber-600 dark:bg-amber-500 h-2 transition-all duration-300 rounded-full"
-                        style={{
-                          width: `${
-                            uploadState === 'uploading'
-                              ? 20
-                              : activeJob?.progressPercentage || 40
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Success State */}
-                {uploadState === 'success' && (
-                  <div className="p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
-                    <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-semibold text-sm">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                      <span>Log Ingestion & Anomaly Analysis Complete!</span>
-                    </div>
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                      Logs processed successfully. New entries and patterns are now available in the stream.
-                    </p>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex items-center justify-end gap-2 mt-5 pt-3 border-t border-neutral-100 dark:border-neutral-850">
-                  <Button variant="ghost" size="sm" onClick={resetUploadModal}>
-                    {uploadState === 'success' ? 'Close' : 'Cancel'}
-                  </Button>
-                  {uploadState === 'idle' && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      disabled={!uploadFile}
-                      onClick={handleStartUpload}
-                      icon={<UploadCloud className="w-3.5 h-3.5" />}
-                    >
-                      Upload & Ingest
-                    </Button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Centralized Log File Upload Modal */}
+      <UploadLogModal
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        projectId={activeProjectId}
+        targetService={
+          selectedService !== 'all'
+            ? services.find((s) => s.name === selectedService || s.id === selectedService) || null
+            : null
+        }
+        availableServices={services.map((s) => ({ id: s.id, name: s.name }))}
+        onSuccess={fetchLogs}
+      />
     </div>
   );
 };

@@ -51,11 +51,30 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
     if (targetService) {
       setSelectedServiceId(targetService.id);
     } else if (availableServices.length > 0) {
-      setSelectedServiceId(availableServices[0].id);
+      setSelectedServiceId((prev) => {
+        if (prev && availableServices.some((s) => s.id === prev)) {
+          return prev;
+        }
+        return availableServices[0].id;
+      });
     } else {
       setSelectedServiceId('');
     }
   }, [targetService, availableServices, isOpen]);
+
+  // Always reset to a fresh idle upload state whenever modal opens or service changes
+  useEffect(() => {
+    if (isOpen) {
+      if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+      setUploadFile(null);
+      setUploadState('idle');
+      setUploadError(null);
+      setActiveJob(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [isOpen, targetService?.id]);
 
   useEffect(() => {
     return () => {
@@ -306,6 +325,20 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
               Drain3 templates discovered and anomaly detection completed for this service node.
             </p>
             <div className="pt-2 flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setUploadFile(null);
+                  setUploadState('idle');
+                  setUploadError(null);
+                  setActiveJob(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                icon={<FileUp className="w-3.5 h-3.5" />}
+              >
+                Upload Another Log
+              </Button>
               <Button
                 variant="primary"
                 size="sm"

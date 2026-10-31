@@ -5,13 +5,15 @@ import {
   AlertOctagon,
   AlertTriangle,
   Flame,
-  Network,
   RefreshCw,
-  ChevronRight,
   UploadCloud,
   Building2,
   ArrowRight,
   Plus,
+  CheckCircle2,
+  Sparkles,
+  ChevronRight,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -21,8 +23,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  BarChart,
-  Bar,
 } from 'recharts';
 import { useAuth } from '@clerk/clerk-react';
 import { Card } from '../../components/ui/Card';
@@ -34,6 +34,7 @@ import { incidentService } from '../../services/incident-service';
 import { anomalyService } from '../../services/anomaly-service';
 import { serviceMapService } from '../../services/service-map-service';
 import { logService } from '../../services/log-service';
+import { UploadLogModal } from '../../components/modals/UploadLogModal';
 import { Incident, Anomaly, ServiceNodeData } from '../../types';
 
 export const OverviewPage: React.FC = () => {
@@ -48,6 +49,7 @@ export const OverviewPage: React.FC = () => {
   const [logCount, setLogCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
   const loadData = async () => {
     if (!activeProjectId) {
@@ -90,10 +92,10 @@ export const OverviewPage: React.FC = () => {
   const tooltipBorder = isDark ? '#262626' : '#e5e5e5';
 
   const totalLogs = logCount || activeProject?._count?.logEntries || 0;
-  const errorCount = anomalies.length > 0 ? anomalies.length * 8 : 0;
-  const activeIncidentCount = incidents.filter((i) => i.status !== 'RESOLVED').length;
-  const criticalCount = incidents.filter((i) => i.severity === 'critical' && i.status !== 'RESOLVED').length;
-  const highCount = incidents.filter((i) => i.severity === 'high' && i.status !== 'RESOLVED').length;
+  const errorCount = anomalies.length > 0 ? anomalies.length * 6 : 0;
+  const activeIncidents = incidents.filter((i) => i.status !== 'RESOLVED');
+  const criticalCount = activeIncidents.filter((i) => i.severity === 'critical').length;
+  const highCount = activeIncidents.filter((i) => i.severity === 'high').length;
   const monitoredServicesCount = services.length || activeProject?._count?.services || 0;
 
   if (!loading && (!activeProjectId || projects.length === 0)) {
@@ -124,18 +126,18 @@ export const OverviewPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Title & Status Header */}
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-neutral-200 dark:border-neutral-800">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-            System Triage Overview
+          <h1 className="font-display text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+            Overview
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Real-time anomaly ingestion, template clustering health, and active incident cascade triage for{' '}
-            <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+          <p className="mt-1 text-xs sm:text-sm text-neutral-500">
+            Telemetry ingestion & AI root cause analysis for{' '}
+            <span className="font-semibold text-neutral-800 dark:text-neutral-200 font-mono">
               {activeProject?.name || 'Project'}
-            </span>.
+            </span>
           </p>
         </div>
 
@@ -149,14 +151,15 @@ export const OverviewPage: React.FC = () => {
           >
             {refreshing ? 'Refreshing' : 'Refresh'}
           </Button>
+
           {monitoredServicesCount > 0 ? (
             <Button
               variant="primary"
               size="sm"
-              onClick={() => navigate('/dashboard/logs')}
+              onClick={() => setUploadModalOpen(true)}
               icon={<UploadCloud className="w-3.5 h-3.5" />}
             >
-              Upload Raw Log File
+              Upload Logs
             </Button>
           ) : (
             <Button
@@ -171,12 +174,12 @@ export const OverviewPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 5 Core Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
-        {/* Total Log Events */}
+      {/* 4 Core Essential Metrics */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Logs */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Total Log Events</span>
+            <span>Total Logs</span>
             <FileCode2 className="w-4 h-4 text-neutral-400" />
           </div>
           <div className="mt-3">
@@ -184,7 +187,7 @@ export const OverviewPage: React.FC = () => {
               {totalLogs.toLocaleString()}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {totalLogs > 0 ? `Across ${monitoredServicesCount} services` : 'No logs ingested yet'}
+              {totalLogs > 0 ? `Across ${monitoredServicesCount} services` : 'No logs ingested'}
             </p>
           </div>
         </Card>
@@ -199,16 +202,16 @@ export const OverviewPage: React.FC = () => {
             <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
               {errorCount}
             </span>
-            <p className="mt-1 text-[11px] text-neutral-500 font-mono">
+            <p className="mt-1 text-[11px] text-neutral-500">
               {errorCount > 0 ? 'Surge detected' : '0 errors logged'}
             </p>
           </div>
         </Card>
 
-        {/* Detected Anomalies */}
+        {/* Anomalies */}
         <Card padding="sm" className="flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Detected Anomalies</span>
+            <span>Anomalies</span>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <div className="mt-3">
@@ -216,7 +219,7 @@ export const OverviewPage: React.FC = () => {
               {anomalies.length}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {anomalies.length > 0 ? 'Statistical spikes' : '0 anomalies'}
+              {anomalies.length > 0 ? 'Drain3 template spikes' : '0 anomalies'}
             </p>
           </div>
         </Card>
@@ -229,229 +232,150 @@ export const OverviewPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <span className="font-mono text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
-              {activeIncidentCount}
+              {activeIncidents.length}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              {criticalCount} Critical · {highCount} High
-            </p>
-          </div>
-        </Card>
-
-        {/* Monitored Services */}
-        <Card padding="sm" className="flex flex-col justify-between col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between text-neutral-500 text-xs">
-            <span>Monitored Services</span>
-            <Network className="w-4 h-4 text-neutral-400" />
-          </div>
-          <div className="mt-3">
-            <span className="font-mono text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
-              {monitoredServicesCount}
-            </span>
-            <p className="mt-1 text-[11px] text-neutral-500">
-              {monitoredServicesCount > 0 ? 'Topology DAG active' : '0 registered'}
+              {criticalCount > 0 ? `${criticalCount} Critical` : highCount > 0 ? `${highCount} High` : 'All systems normal'}
             </p>
           </div>
         </Card>
       </div>
 
-      {/* Main Visualizations: Log Activity Chart & Anomaly Spike Bar */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Log Volume Area Chart */}
-        <div className="lg:col-span-8">
-          <Card padding="md" className="h-full flex flex-col justify-between">
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-neutral-100 dark:border-neutral-850">
-                <div>
-                  <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                    Log Activity & Error Distribution Over Time
-                  </h2>
-                  <p className="text-xs text-neutral-500">
-                    Volume trends compared against error spikes (UTC)
-                  </p>
-                </div>
-              </div>
-
-              {totalLogs > 0 ? (
-                <div className="h-72 mt-4 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={[
-                        { time: '10:00', totalVolume: Math.round(totalLogs * 0.2), errors: 0 },
-                        { time: '10:05', totalVolume: Math.round(totalLogs * 0.25), errors: 1 },
-                        { time: '10:10', totalVolume: Math.round(totalLogs * 0.35), errors: errorCount },
-                        { time: '10:15', totalVolume: Math.round(totalLogs * 0.4), errors: errorCount },
-                        { time: '10:20', totalVolume: Math.round(totalLogs * 0.2), errors: 0 },
-                      ]}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                      <XAxis dataKey="time" stroke={textColor} fontSize={11} tickLine={false} />
-                      <YAxis stroke={textColor} fontSize={11} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: tooltipBg,
-                          borderColor: tooltipBorder,
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          color: isDark ? '#fff' : '#000',
-                        }}
-                      />
-                      <Area type="monotone" dataKey="totalVolume" stroke={isDark ? '#737373' : '#525252'} fillOpacity={0.2} name="Total Events" />
-                      <Area type="monotone" dataKey="errors" stroke="#dc2626" fillOpacity={0.3} strokeWidth={2} name="Errors" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : monitoredServicesCount === 0 ? (
-                <div className="h-72 flex flex-col items-center justify-center text-center p-6 space-y-3">
-                  <Network className="w-10 h-10 text-neutral-400" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
-                      Register Microservices First
-                    </h3>
-                    <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                      A microservice architecture must be defined before log streams can be ingested and mapped.
-                    </p>
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => navigate('/dashboard/service-map')}
-                    icon={<Plus className="w-3.5 h-3.5" />}
-                  >
-                    Register First Service
-                  </Button>
-                </div>
-              ) : (
-                <div className="h-72 flex flex-col items-center justify-center text-center p-6 space-y-3">
-                  <FileCode2 className="w-10 h-10 text-neutral-400" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
-                      No Log Data Ingested
-                    </h3>
-                    <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                      Upload your first raw log file (.log, .txt, .csv) to begin template parsing and real-time anomaly discovery.
-                    </p>
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => navigate('/dashboard/logs')}
-                    icon={<UploadCloud className="w-3.5 h-3.5" />}
-                  >
-                    Upload Log File
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-
-        {/* Severity Breakdown & Anomaly Bursts */}
-        <div className="lg:col-span-4 space-y-6">
-          <Card padding="md">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-850">
-              <div>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                  Incident Severity
-                </h3>
-                <p className="text-xs text-neutral-500">Active distribution</p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/incidents')}>
-                Manage
-              </Button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-red-50/60 dark:bg-red-950/20 border border-red-200/80 dark:border-red-900/40">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-red-600" />
-                  <span className="font-semibold text-red-950 dark:text-red-300">Critical</span>
-                </div>
-                <span className="font-mono font-bold text-red-700 dark:text-red-400">{criticalCount} Incidents</span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-600" />
-                  <span className="font-semibold text-amber-950 dark:text-amber-300">High</span>
-                </div>
-                <span className="font-mono font-bold text-amber-700 dark:text-amber-400">{highCount} Incidents</span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-850 border border-neutral-200/70 dark:border-neutral-800">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                  <span className="text-neutral-700 dark:text-neutral-300">Medium</span>
-                </div>
-                <span className="font-mono text-neutral-500">
-                  {incidents.filter((i) => i.severity === 'medium').length} Incidents
-                </span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Anomaly Timeline Miniature */}
-          <Card padding="md">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-850">
-              <div>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                  Anomaly Bursts
-                </h3>
-                <p className="text-xs text-neutral-500">Detected frequency spikes</p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/anomalies')}>
-                Details
-              </Button>
-            </div>
-
-            {anomalies.length > 0 ? (
-              <div className="h-32 mt-3">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={anomalies.map((a, i) => ({ time: `A${i + 1}`, anomalies: a.observedValue || 1 }))}>
-                    <Bar dataKey="anomalies" fill="#b45309" radius={[4, 4, 0, 0]} />
-                    <XAxis dataKey="time" stroke={textColor} fontSize={10} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: tooltipBg,
-                        borderColor: tooltipBorder,
-                        borderRadius: '8px',
-                        fontSize: '11px',
-                      }}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-32 flex flex-col items-center justify-center text-center p-3 text-xs text-neutral-500">
-                <p>No anomaly bursts detected.</p>
-              </div>
-            )}
-          </Card>
-        </div>
-      </div>
-
-      {/* Recent Correlated Incidents Table */}
-      <Card padding="none">
-        <div className="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+      {/* Full-Width Telemetry Volume & Error Chart */}
+      <Card padding="md" className="space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-850">
           <div>
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-              Recent Correlated Incidents
+              Log Activity & Error Distribution
             </h2>
-            <p className="text-xs text-neutral-500">Traceable to parsed log evidence</p>
+            <p className="text-xs text-neutral-500">
+              Log stream volume compared against error and anomaly spikes
+            </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/incidents')}>
-            View All ({incidents.length})
-          </Button>
+          {totalLogs > 0 && (
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-neutral-400" />
+                <span className="text-neutral-500">Volume</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                <span className="text-neutral-500">Errors</span>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="divide-y divide-neutral-100 dark:divide-neutral-850 overflow-x-auto">
+        {totalLogs > 0 ? (
+          <div className="h-64 sm:h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={[
+                  { time: '10:00', totalVolume: Math.round(totalLogs * 0.15), errors: 0 },
+                  { time: '10:05', totalVolume: Math.round(totalLogs * 0.22), errors: Math.min(errorCount, 1) },
+                  { time: '10:10', totalVolume: Math.round(totalLogs * 0.38), errors: errorCount },
+                  { time: '10:15', totalVolume: Math.round(totalLogs * 0.32), errors: Math.round(errorCount * 0.6) },
+                  { time: '10:20', totalVolume: Math.round(totalLogs * 0.18), errors: 0 },
+                ]}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                <XAxis dataKey="time" stroke={textColor} fontSize={11} tickLine={false} />
+                <YAxis stroke={textColor} fontSize={11} tickLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: tooltipBg,
+                    borderColor: tooltipBorder,
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    color: isDark ? '#fff' : '#000',
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="totalVolume"
+                  stroke={isDark ? '#737373' : '#525252'}
+                  fill={isDark ? '#262626' : '#f5f5f5'}
+                  fillOpacity={0.6}
+                  name="Volume"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="errors"
+                  stroke="#ef4444"
+                  fill="#ef4444"
+                  fillOpacity={0.25}
+                  strokeWidth={2}
+                  name="Errors"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-56 flex flex-col items-center justify-center text-center p-6 space-y-3">
+            <FileCode2 className="w-10 h-10 text-neutral-400" />
+            <div>
+              <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                No Ingested Telemetry
+              </h3>
+              <p className="text-xs text-neutral-500 mt-1 max-w-sm">
+                {monitoredServicesCount === 0
+                  ? 'Define your microservices first, then upload raw logs to start automated analysis.'
+                  : 'Upload log files to microservices to start Drain3 clustering and anomaly discovery.'}
+              </p>
+            </div>
+            {monitoredServicesCount > 0 ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setUploadModalOpen(true)}
+                icon={<UploadCloud className="w-3.5 h-3.5" />}
+              >
+                Upload First Log
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/dashboard/service-map')}
+                icon={<Plus className="w-3.5 h-3.5" />}
+              >
+                Register Microservice
+              </Button>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Active Incidents & AI Root Cause Analysis (RCA) */}
+      <Card padding="none">
+        <div className="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                Active Incidents & AI Root Cause Analysis
+              </h2>
+              <p className="text-xs text-neutral-500">
+                Real-time incident cascades and root cause recommendations
+              </p>
+            </div>
+          </div>
+          {incidents.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/incidents')}>
+              View All ({incidents.length})
+            </Button>
+          )}
+        </div>
+
+        <div className="divide-y divide-neutral-100 dark:divide-neutral-850">
           {incidents.slice(0, 4).map((inc) => (
             <div
               key={inc.id}
               onClick={() => navigate(`/dashboard/incidents/${inc.id}`)}
               className="p-4 hover:bg-neutral-50 dark:hover:bg-neutral-850 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
             >
-              <div className="space-y-1">
+              <div className="space-y-1 max-w-2xl">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs font-bold text-neutral-500">
                     {inc.id.slice(0, 8)}
@@ -470,18 +394,18 @@ export const OverviewPage: React.FC = () => {
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                   {inc.title}
                 </h3>
-                <p className="text-xs text-neutral-500 line-clamp-1 max-w-2xl">
-                  {inc.aiSummary}
+                <p className="text-xs text-neutral-500 line-clamp-1">
+                  {inc.aiSummary || 'Automated AI root cause analysis in progress.'}
                 </p>
               </div>
 
               <div className="flex items-center gap-4 shrink-0 text-xs">
-                <div className="text-right hidden md:block">
-                  <div className="font-medium text-neutral-800 dark:text-neutral-200">
-                    Root: {inc.suspectedRootCauseService}
+                <div className="text-right">
+                  <div className="font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
+                    Root: {inc.suspectedRootCauseService || 'Evaluating'}
                   </div>
                   <div className="text-[11px] text-neutral-400 font-mono">
-                    {inc.firstDetected}
+                    {inc.firstDetected || 'Recently'}
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-neutral-400" />
@@ -490,35 +414,27 @@ export const OverviewPage: React.FC = () => {
           ))}
 
           {incidents.length === 0 && !loading && (
-            <div className="p-8 text-center space-y-3">
-              <p className="text-xs text-neutral-500">
-                {monitoredServicesCount === 0
-                  ? 'No microservices registered yet. Create services to track topology and triage incidents.'
-                  : 'No incidents reported for this project. Upload raw logs to start automated root cause analysis.'}
+            <div className="p-8 text-center space-y-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                All Systems Operational
+              </h3>
+              <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                No active incidents or anomaly cascades detected across your microservices topology.
               </p>
-              {monitoredServicesCount === 0 ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => navigate('/dashboard/service-map')}
-                  icon={<Plus className="w-3.5 h-3.5" />}
-                >
-                  Register Service
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => navigate('/dashboard/logs')}
-                  icon={<UploadCloud className="w-3.5 h-3.5" />}
-                >
-                  Upload Logs
-                </Button>
-              )}
             </div>
           )}
         </div>
       </Card>
+
+      {/* Centralized Upload Log Modal */}
+      <UploadLogModal
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        projectId={activeProjectId}
+        availableServices={services.map((s) => ({ id: s.id, name: s.name }))}
+        onSuccess={loadData}
+      />
     </div>
   );
 };
