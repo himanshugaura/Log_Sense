@@ -32,6 +32,7 @@ class ProcessLogRequest(BaseModel):
     serviceId: Optional[str] = Field(None, description="Optional UUID of the service")
     fileKey: str = Field(..., description="Object storage S3 key")
     bucket: Optional[str] = Field(None, description="Optional S3 bucket name")
+    filePath: Optional[str] = Field(None, description="Optional local file path for instant processing")
 
 class ProcessLogResponse(BaseModel):
     success: bool
@@ -71,6 +72,7 @@ async def process_log_async(payload: ProcessLogRequest, background_tasks: Backgr
         service_id=payload.serviceId,
         file_key=payload.fileKey,
         bucket=payload.bucket,
+        local_path=payload.filePath,
     )
 
     return ProcessLogResponse(
@@ -94,6 +96,7 @@ def process_log_sync(payload: ProcessLogRequest):
             service_id=payload.serviceId,
             file_key=payload.fileKey,
             bucket=payload.bucket,
+            local_path=payload.filePath,
         )
         return ProcessLogResponse(
             success=True,

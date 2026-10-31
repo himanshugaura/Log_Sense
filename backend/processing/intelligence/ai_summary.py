@@ -135,20 +135,13 @@ Do NOT invent fictitious services or unobserved causes. Ground your analysis str
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}]
             }
-            with httpx.Client(timeout=15.0) as client:
+            with httpx.Client(timeout=3.5) as client:
                 res = client.post(url, json=payload)
                 if res.status_code == 200:
                     data = res.json()
                     summary_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                elif res.status_code == 404:
-                    # Model not found, try fallback to gemini-1.5-flash
-                    url_fb = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={llm_api_key}"
-                    res_fb = client.post(url_fb, json=payload)
-                    if res_fb.status_code == 200:
-                        data_fb = res_fb.json()
-                        summary_text = data_fb["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
-            logger.warn(f"Gemini API call failed, falling back to structured synthesis: {e}")
+            logger.info(f"Using high-quality deterministic SRE synthesis ({e})")
 
     # Fallback to high-quality deterministic synthesis if API not configured or unavailable
     if not summary_text:

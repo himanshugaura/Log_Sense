@@ -91,13 +91,12 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
 
       if (jobId) {
         let attempts = 0;
-        const maxAttempts = 50; // 50 * 2.5s = ~125 seconds
+        const maxAttempts = 60; // 60 * 1.2s = ~72 seconds
 
         const pollJobStatus = async () => {
           if (pollingTimerRef.current === null) return;
           try {
-            const jobs = await logService.getProcessingJobs(projectId);
-            const current = jobs.find((j) => j.id === jobId);
+            const current = await logService.getProcessingJobById(projectId, jobId);
 
             if (current) {
               setActiveJob(current);
@@ -129,12 +128,12 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
             return;
           }
 
-          // Schedule next check only AFTER the previous request finished
-          pollingTimerRef.current = setTimeout(pollJobStatus, 2500);
+          // Schedule next check only AFTER the previous request finished (fast 1200ms interval)
+          pollingTimerRef.current = setTimeout(pollJobStatus, 1200);
         };
 
-        // First check after 1500ms
-        pollingTimerRef.current = setTimeout(pollJobStatus, 1500);
+        // First check after 800ms
+        pollingTimerRef.current = setTimeout(pollJobStatus, 800);
       } else {
         setUploadState('success');
         onSuccess?.();

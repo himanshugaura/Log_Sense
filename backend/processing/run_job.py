@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--project-id", required=True, help="Project UUID")
     parser.add_argument("--file-key", required=True, help="Storage file key")
     parser.add_argument("--bucket", default=None, help="Optional bucket name")
+    parser.add_argument("--local-path", default=None, help="Optional local file path for instant zero-latency processing")
 
     args = parser.parse_args()
     logger.info(f"CLI Runner executing job {args.job_id} for project {args.project_id}")
@@ -31,6 +32,7 @@ def main():
             project_id=args.project_id,
             file_key=args.file_key,
             bucket=args.bucket,
+            local_path=args.local_path,
         )
         logger.info(f"Job {args.job_id} completed successfully with {count} records.")
         sys.exit(0)

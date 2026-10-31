@@ -93,8 +93,8 @@ class PostgresDrainPersistenceHandler(PersistenceHandler):
 
 class DrainManager:
     """
-    Manages Drain3 TemplateMiner lifecycle with PostgreSQL persistence.
-    Operates at dataset/project level without registered service dependencies.
+    Manages Drain3 TemplateMiner lifecycle with in-memory execution and single-shot persistence.
+    Operates 100% in memory during log stream processing to prevent network round-trip stalls.
     """
     def __init__(self, db: Session, project_id: str):
         self.db = db
@@ -107,12 +107,21 @@ class DrainManager:
         config.drain_max_children = 100
         config.snapshot_compress_state = False
 
-        self.miner = TemplateMiner(persistence_handler=self.handler, config=config)
+        # In-memory execution: persistence_handler=None eliminates per-cluster DB write stalls
+        self.miner = TemplateMiner(persistence_handler=None, config=config)
         self.parser_state_id = self.handler.get_or_create_parser_state_id()
+
+        # Load existing state if available
+        initial_bytes = self.handler.load_state()
+        if initial_bytes:
+            try:
+                self.miner.load_state(initial_bytes)
+            except Exception:
+                pass
 
     def process_message(self, message: str) -> Tuple[int, str, bool]:
         """
-        Feeds a log message into Drain3.
+        Feeds a log message into Drain3 in RAM.
         Returns:
             (drain_cluster_id, template, is_new_cluster)
         """
@@ -123,5 +132,8 @@ class DrainManager:
         return cluster_id, template, is_new
 
     def save_state(self, reason: str = "batch_processed"):
-        """Saves Drain3 learned memory to the database."""
-        self.miner.save_state(snapshot_reason=reason)
+        """Saves Drain3 learned memory to the database once at the end of ingestion."""
+        self.miner.persistence_handler = self.handler
+        self.miner.save_state(reason)
+        self.miner.persistence_handler = None
+        self.db.commit()

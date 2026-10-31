@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Set, Any
+from collections import defaultdict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -23,12 +24,13 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
     evidence of a common disturbance:
     1. Same project / dataset analysis.
     2. Temporal proximity within a 5-minute correlation window.
-    3. Plausible relationships or shared affected clusters.
+    3. Shared affected clusters or cascade relationships.
     Avoids duplicate incidents by accumulating anomaly evidence into active incidents.
+    Optimized for batch database execution (0 per-anomaly query roundtrips).
     """
     logger.info(f"Running incident correlation for project {project_id}")
 
-    # 1. Fetch actionable anomalies (ESCALATE, MONITOR, ACTIVE)
+    # 1. Fetch actionable anomalies for this project in 1 query
     anomalies = db.execute(
         text("""
             SELECT a.id, a."clusterId", a.severity, a.status, a."firstDetectedAt",
@@ -45,7 +47,7 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
         logger.info("No anomalies available for correlation.")
         return []
 
-    # 2. Fetch existing OPEN incidents for this project
+    # 2. Fetch existing OPEN incidents and their linked anomalies in 2 single batch queries
     open_incidents_rows = db.execute(
         text("""
             SELECT i.id, i.severity, i.status, i."startedAt", i.title
@@ -56,24 +58,35 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
         {"project_id": project_id}
     ).fetchall()
 
+    linked_rows = db.execute(
+        text("""
+            SELECT ia."incidentId", a.id, a."clusterId", a."firstDetectedAt"
+            FROM incident_anomalies ia
+            JOIN anomalies a ON ia."anomalyId" = a.id
+            JOIN incidents i ON ia."incidentId" = i.id
+            WHERE i."projectId" = :project_id AND i.status = 'OPEN'
+        """),
+        {"project_id": project_id}
+    ).fetchall()
+
+    linked_by_incident: Dict[str, List[tuple]] = defaultdict(list)
+    already_linked_anomaly_map: Dict[str, str] = {}
+    for r in linked_rows:
+        inc_id = str(r[0])
+        a_id = str(r[1])
+        linked_by_incident[inc_id].append(r)
+        already_linked_anomaly_map[a_id] = inc_id
+
     active_incidents = []
     for inc in open_incidents_rows:
         inc_id = str(inc[0])
-        linked = db.execute(
-            text("""
-                SELECT a.id, a."clusterId", a."firstDetectedAt", a.evidence
-                FROM incident_anomalies ia
-                JOIN anomalies a ON ia."anomalyId" = a.id
-                WHERE ia."incidentId" = :inc_id
-            """),
-            {"inc_id": inc_id}
-        ).fetchall()
+        linked = linked_by_incident.get(inc_id, [])
 
-        cluster_ids = {str(l[1]) for l in linked if l[1]}
+        cluster_ids = {str(l[2]) for l in linked if l[2]}
         earliest_time = inc[3]
         latest_time = inc[3]
         for l in linked:
-            t = l[2]
+            t = l[3]
             if t < earliest_time:
                 earliest_time = t
             if t > latest_time:
@@ -86,10 +99,13 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             "startedAt": earliest_time,
             "lastEventAt": latest_time,
             "cluster_ids": cluster_ids,
-            "anomaly_ids": {str(l[0]) for l in linked},
+            "anomaly_ids": {str(l[1]) for l in linked},
         })
 
     affected_incident_ids: Set[str] = set()
+    new_incidents_to_insert = []
+    incident_anomalies_to_insert = []
+    severity_updates = {}
 
     for a in anomalies:
         a_id = str(a[0])
@@ -101,17 +117,12 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
         a_type = str(a[7])
         a_template = str(a[8]) if a[8] else a_title
 
-        # Check if already linked
-        already_linked = db.execute(
-            text("SELECT \"incidentId\" FROM incident_anomalies WHERE \"anomalyId\" = :a_id LIMIT 1"),
-            {"a_id": a_id}
-        ).fetchone()
-
-        if already_linked:
-            affected_incident_ids.add(str(already_linked[0]))
+        # Check if already linked via in-memory map
+        if a_id in already_linked_anomaly_map:
+            affected_incident_ids.add(already_linked_anomaly_map[a_id])
             continue
 
-        # Extract affected cluster IDs from evidence if available
+        # Extract affected cluster IDs from evidence
         a_affected_cids = set()
         if isinstance(a_ev, dict) and "affectedClusters" in a_ev:
             for aff in a_ev["affectedClusters"]:
@@ -120,45 +131,37 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
 
         matched_incident = None
 
-        # Check against active incidents
+        # Correlate within 5-minute disturbance window
         for inc in active_incidents:
-            # Check 5-minute correlation window against incident event boundary
             time_delta_to_start = abs((a_time - inc["startedAt"]).total_seconds()) / 60.0
             time_delta_to_latest = abs((a_time - inc["lastEventAt"]).total_seconds()) / 60.0
 
+            # Incident window boundary check
             if time_delta_to_latest > CORRELATION_WINDOW_MINUTES and time_delta_to_start > CORRELATION_WINDOW_MINUTES:
                 continue
 
-            # Check cluster overlap or affected cluster relationship
             has_cluster_overlap = a_cid and (a_cid in inc["cluster_ids"])
             has_affected_overlap = bool(a_affected_cids & inc["cluster_ids"])
 
-            # Within 5-minute disturbance window with shared clusters or overall disturbance
-            if has_cluster_overlap or has_affected_overlap or time_delta_to_latest <= 2.0:
+            # Common disturbance if in 5-min window and shares cluster or near contemporaneous
+            if has_cluster_overlap or has_affected_overlap or time_delta_to_latest <= 5.0:
                 matched_incident = inc
                 break
 
         if matched_incident:
-            # Accumulate anomaly evidence into existing incident
             inc_id = matched_incident["id"]
-            db.execute(
-                text("""
-                    INSERT INTO incident_anomalies (id, "incidentId", "anomalyId", "createdAt")
-                    VALUES (:id, :inc_id, :anomaly_id, NOW())
-                    ON CONFLICT ("incidentId", "anomalyId") DO NOTHING
-                """),
-                {"id": str(uuid.uuid4()), "inc_id": inc_id, "anomaly_id": a_id}
-            )
+            incident_anomalies_to_insert.append({
+                "id": str(uuid.uuid4()),
+                "inc_id": inc_id,
+                "anomaly_id": a_id,
+            })
+            already_linked_anomaly_map[a_id] = inc_id
 
-            # Escalate severity if new anomaly is higher
             curr_rank = SEVERITY_ORDER.get(matched_incident["severity"], 1)
             new_rank = SEVERITY_ORDER.get(a_sev, 1)
             if new_rank > curr_rank:
-                db.execute(
-                    text("UPDATE incidents SET severity = :sev WHERE id = :id"),
-                    {"sev": a_sev, "id": inc_id}
-                )
                 matched_incident["severity"] = a_sev
+                severity_updates[inc_id] = a_sev
 
             if a_cid:
                 matched_incident["cluster_ids"].add(a_cid)
@@ -171,7 +174,6 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             affected_incident_ids.add(inc_id)
 
         else:
-            # Create a new Incident with high-signal informative title
             new_inc_id = str(uuid.uuid4())
             clean_snippet = a_template[:65].strip()
             if a_type == "NEW_PATTERN":
@@ -179,36 +181,25 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             elif a_type == "SPIKE":
                 inc_title = f"Incident: Critical Spike in '{clean_snippet}'"
             else:
-                inc_title = f"Incident: {a_sev} Telemetry Anomaly Detected"
+                inc_title = f"Incident: {a_sev} Telemetry Disturbance"
 
             inc_desc = f"Correlated incident initialized by {a_title} at {a_time.strftime('%Y-%m-%d %H:%M:%S UTC')}."
 
-            db.execute(
-                text("""
-                    INSERT INTO incidents (
-                        id, "projectId", title, description, severity, status, "startedAt"
-                    ) VALUES (
-                        :id, :project_id, :title, :description, :severity, 'OPEN', :started_at
-                    )
-                """),
-                {
-                    "id": new_inc_id,
-                    "project_id": project_id,
-                    "title": inc_title,
-                    "description": inc_desc,
-                    "severity": a_sev,
-                    "started_at": a_time,
-                }
-            )
+            new_incidents_to_insert.append({
+                "id": new_inc_id,
+                "project_id": project_id,
+                "title": inc_title,
+                "description": inc_desc,
+                "severity": a_sev,
+                "started_at": a_time,
+            })
 
-            # Link anomaly to new incident
-            db.execute(
-                text("""
-                    INSERT INTO incident_anomalies (id, "incidentId", "anomalyId", "createdAt")
-                    VALUES (:id, :inc_id, :anomaly_id, NOW())
-                """),
-                {"id": str(uuid.uuid4()), "inc_id": new_inc_id, "anomaly_id": a_id}
-            )
+            incident_anomalies_to_insert.append({
+                "id": str(uuid.uuid4()),
+                "inc_id": new_inc_id,
+                "anomaly_id": a_id,
+            })
+            already_linked_anomaly_map[a_id] = new_inc_id
 
             active_incidents.append({
                 "id": new_inc_id,
@@ -221,6 +212,32 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             })
 
             affected_incident_ids.add(new_inc_id)
+
+    # 3. Batch commit all changes in 3 bulk queries
+    if new_incidents_to_insert:
+        db.execute(
+            text("""
+                INSERT INTO incidents (id, "projectId", title, description, severity, status, "startedAt")
+                VALUES (:id, :project_id, :title, :description, :severity, 'OPEN', :started_at)
+            """),
+            new_incidents_to_insert
+        )
+
+    if incident_anomalies_to_insert:
+        db.execute(
+            text("""
+                INSERT INTO incident_anomalies (id, "incidentId", "anomalyId", "createdAt")
+                VALUES (:id, :inc_id, :anomaly_id, NOW())
+                ON CONFLICT ("incidentId", "anomalyId") DO NOTHING
+            """),
+            incident_anomalies_to_insert
+        )
+
+    for inc_id, sev in severity_updates.items():
+        db.execute(
+            text("UPDATE incidents SET severity = :sev WHERE id = :id"),
+            {"sev": sev, "id": inc_id}
+        )
 
     db.commit()
     logger.info(f"Incident correlation completed. Total {len(affected_incident_ids)} incidents active/updated.")

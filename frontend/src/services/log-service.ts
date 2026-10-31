@@ -208,6 +208,25 @@ export const logService = {
   },
 
   /**
+   * Fast indexed polling check for a single processing job
+   */
+  async getProcessingJobById(projectId: string, jobId: string): Promise<ProcessingJob | null> {
+    if (!apiClient.isBackendConnected || !projectId || !jobId) {
+      return null;
+    }
+
+    try {
+      const res = await apiClient.fetchEndpoint<{ job: ProcessingJob }>(
+        `/logs/${projectId}/jobs/${jobId}`
+      );
+      return res?.job || null;
+    } catch (err) {
+      console.warn(`Failed to fetch processing job ${jobId}:`, err);
+      return null;
+    }
+  },
+
+  /**
    * Polls live ingestion/processing job status
    */
   async getProcessingJobs(projectId: string): Promise<ProcessingJob[]> {

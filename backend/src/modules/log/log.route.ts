@@ -83,6 +83,13 @@ router.delete(
 );
 
 // --- Ingestion & Processing Jobs ---
+// GET /api/v1/logs/:projectId/jobs/:jobId OR /api/v1/logs/projects/:projectId/jobs/:jobId
+router.get(
+  ["/:projectId/jobs/:jobId", "/projects/:projectId/jobs/:jobId"],
+  validateParams(projectIdParamSchema),
+  logController.getProcessingJobById,
+);
+
 // GET /api/v1/logs/:projectId/jobs OR /api/v1/logs/projects/:projectId/jobs
 router.get(
   ["/:projectId/jobs", "/projects/:projectId/jobs"],

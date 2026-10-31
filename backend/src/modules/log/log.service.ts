@@ -67,13 +67,38 @@ export class LogService {
       contentType: params.file.mimetype || "text/plain",
     });
 
-    // 3. Reset previous log telemetry for this project to ensure 1:1 service-to-log isolation
+    // Write a local temporary buffer copy so Python worker can parse with 0 network latency
+    let localFilePath: string | undefined;
     try {
-      await prisma.incident.deleteMany({ where: { projectId: params.projectId } });
-      await prisma.anomaly.deleteMany({ where: { projectId: params.projectId } });
-      await prisma.parserState.deleteMany({ where: { projectId: params.projectId } });
-      await prisma.processingJob.deleteMany({ where: { projectId: params.projectId } });
-      await prisma.logSource.deleteMany({ where: { projectId: params.projectId } });
+      const tempDir = path.resolve(process.cwd(), "tmp", "uploads");
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      localFilePath = path.resolve(tempDir, `${Date.now()}-${path.basename(params.file.originalname)}`);
+      fs.writeFileSync(localFilePath, params.file.buffer);
+    } catch (fsErr: any) {
+      logger.warn(`Could not cache local file copy: ${fsErr?.message}`);
+    }
+
+    // 3. Reset previous log telemetry for this project in a single fast database statement
+    try {
+      const cleanProjId = params.projectId.replace(/'/g, "''");
+      await prisma.$executeRawUnsafe(
+        `DO $$
+         BEGIN
+           DELETE FROM incident_summaries WHERE "incidentId" IN (SELECT id FROM incidents WHERE "projectId" = '${cleanProjId}');
+           DELETE FROM root_cause_candidates WHERE "analysisId" IN (SELECT id FROM rca_analyses WHERE "incidentId" IN (SELECT id FROM incidents WHERE "projectId" = '${cleanProjId}'));
+           DELETE FROM rca_analyses WHERE "incidentId" IN (SELECT id FROM incidents WHERE "projectId" = '${cleanProjId}');
+           DELETE FROM incident_anomalies WHERE "incidentId" IN (SELECT id FROM incidents WHERE "projectId" = '${cleanProjId}');
+           DELETE FROM incidents WHERE "projectId" = '${cleanProjId}';
+           DELETE FROM anomalies WHERE "projectId" = '${cleanProjId}';
+           DELETE FROM log_entries WHERE "projectId" = '${cleanProjId}';
+           DELETE FROM log_clusters WHERE "parserStateId" IN (SELECT id FROM parser_states WHERE "projectId" = '${cleanProjId}');
+           DELETE FROM parser_states WHERE "projectId" = '${cleanProjId}';
+           DELETE FROM processing_jobs WHERE "projectId" = '${cleanProjId}';
+           DELETE FROM log_sources WHERE "projectId" = '${cleanProjId}';
+         END $$;`
+      );
     } catch (err: any) {
       logger.warn(`Notice during cleanup of previous project telemetry: ${err?.message}`);
     }
@@ -100,12 +125,13 @@ export class LogService {
       },
     });
 
-    // 4. Trigger asynchronous processing via Python FastAPI service
+    // 4. Trigger asynchronous processing via Python FastAPI service (with local CLI fallback)
     this.triggerProcessingJob({
       jobId: processingJob.id,
       logSourceId: logSource.id,
       projectId: project.id,
       fileKey: uploadResult.key,
+      filePath: localFilePath,
     }).catch((err) => {
       logger.warn(
         `Python processing trigger failed or queued for job ${processingJob.id}: ${err.message}`,
@@ -133,6 +159,7 @@ export class LogService {
     logSourceId: string;
     projectId: string;
     fileKey: string;
+    filePath?: string;
   }): Promise<void> {
     const processingEndpoint = `${env.PROCESSING_SERVICE_URL}/api/v1/process`;
 
@@ -190,6 +217,7 @@ export class LogService {
     logSourceId: string;
     projectId: string;
     fileKey: string;
+    filePath?: string;
   }): Promise<void> {
     const isWindows = process.platform === "win32";
 
@@ -233,6 +261,10 @@ export class LogService {
       "--project-id", payload.projectId,
       "--file-key", payload.fileKey,
     ];
+
+    if (payload.filePath && fs.existsSync(payload.filePath)) {
+      args.push("--local-path", payload.filePath);
+    }
 
     logger.info(`Spawning background Python worker: ${pythonBin} ${args.join(" ")}`);
 
@@ -537,6 +569,33 @@ export class LogService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Fast indexed lookup of a single processing job status (for lightweight client polling)
+   */
+  async getProcessingJobById(projectId: string, jobId: string, userId: string) {
+    const job = await prisma.processingJob.findFirst({
+      where: { id: jobId, projectId },
+      select: {
+        id: true,
+        projectId: true,
+        logSourceId: true,
+        jobType: true,
+        status: true,
+        totalItems: true,
+        processedItems: true,
+        errorMessage: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    });
+
+    if (!job) {
+      throw new ApiError(StatusCodes.NOT_FOUND, "Processing job not found");
+    }
+
+    return job;
   }
 
   /**

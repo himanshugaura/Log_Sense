@@ -281,21 +281,8 @@ class RcaEngine:
             }
         )
 
-        for cand in scored_candidates:
-            self.db.execute(
-                text("""
-                    INSERT INTO root_cause_candidates (
-                        id, "analysisId", "clusterId", template,
-                        "totalScore", "temporalPoints", "frequencyPoints",
-                        "classificationPoints", "relationshipPoints",
-                        explanation, rank, evidence
-                    ) VALUES (
-                        :id, :analysis_id, :cluster_id, :template,
-                        :total_score, :temporal_pts, :frequency_pts,
-                        :class_pts, :rel_pts,
-                        :explanation, :rank, CAST(:evidence AS jsonb)
-                    )
-                """),
+        if scored_candidates:
+            candidates_to_insert = [
                 {
                     "id": str(uuid.uuid4()),
                     "analysis_id": analysis_id,
@@ -310,6 +297,23 @@ class RcaEngine:
                     "rank": cand["rank"],
                     "evidence": json.dumps(cand["evidence"]),
                 }
+                for cand in scored_candidates
+            ]
+            self.db.execute(
+                text("""
+                    INSERT INTO root_cause_candidates (
+                        id, "analysisId", "clusterId", template,
+                        "totalScore", "temporalPoints", "frequencyPoints",
+                        "classificationPoints", "relationshipPoints",
+                        explanation, rank, evidence
+                    ) VALUES (
+                        :id, :analysis_id, :cluster_id, :template,
+                        :total_score, :temporal_pts, :frequency_pts,
+                        :class_pts, :rel_pts,
+                        :explanation, :rank, CAST(:evidence AS jsonb)
+                    )
+                """),
+                candidates_to_insert
             )
 
         self.db.commit()

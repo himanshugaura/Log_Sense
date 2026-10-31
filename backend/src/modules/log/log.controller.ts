@@ -159,6 +159,24 @@ export class LogController {
   });
 
   /**
+   * Fast lookup of a single processing job for polling
+   * GET /api/v1/logs/:projectId/jobs/:jobId
+   */
+  getProcessingJobById = CatchAsync(async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, "User authentication required");
+    }
+
+    const projectId = req.params.projectId as string;
+    const jobId = req.params.jobId as string;
+
+    const job = await logService.getProcessingJobById(projectId, jobId, userId);
+
+    sendResponse(res, StatusCodes.OK, "Processing job status retrieved", { job });
+  });
+
+  /**
    * Deletes a log source and its object storage file
    * DELETE /api/v1/logs/:projectId/sources/:sourceId
    */

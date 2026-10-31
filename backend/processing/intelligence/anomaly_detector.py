@@ -113,6 +113,7 @@ def detect_and_evaluate_anomalies(
     """
     logger.info(f"Running statistical anomaly detection for project {project_id}")
     detected_anomalies = []
+    anomalies_to_insert = []
 
     # 1. Fetch all clusters for the project
     cluster_rows = db.execute(
@@ -276,29 +277,21 @@ def detect_and_evaluate_anomalies(
                     },
                 }
 
-                db.execute(
-                    text("""
-                        INSERT INTO anomalies (
-                            id, "projectId", "clusterId", "serviceName",
-                            "anomalyType", title, description, severity, status,
-                            "occurrenceCount", "firstDetectedAt", "lastDetectedAt", evidence
-                        ) VALUES (
-                            :id, :project_id, NULL, 'application',
-                            'SPIKE', :title, :description, 'CRITICAL', 'ESCALATE',
-                            :occ, :first_seen, :last_seen, CAST(:evidence AS jsonb)
-                        )
-                    """),
-                    {
-                        "id": anomaly_id,
-                        "project_id": project_id,
-                        "title": title,
-                        "description": desc,
-                        "occ": current_error_count,
-                        "first_seen": curr_minute,
-                        "last_seen": curr_minute,
-                        "evidence": json.dumps(evidence),
-                    }
-                )
+                anomalies_to_insert.append({
+                    "id": anomaly_id,
+                    "project_id": project_id,
+                    "cluster_id": None,
+                    "service_name": "application",
+                    "anomaly_type": "SPIKE",
+                    "title": title,
+                    "description": desc,
+                    "severity": "CRITICAL",
+                    "status": "ESCALATE",
+                    "occ": current_error_count,
+                    "first_seen": curr_minute,
+                    "last_seen": curr_minute,
+                    "evidence": json.dumps(evidence),
+                })
                 existing_set.add(dedup_key)
                 detected_anomalies.append({
                     "id": anomaly_id,
@@ -450,33 +443,21 @@ def detect_and_evaluate_anomalies(
 
                 status_val = "ESCALATE" if classification in ("CRITICAL", "HIGH") else "MONITOR"
 
-                db.execute(
-                    text("""
-                        INSERT INTO anomalies (
-                            id, "projectId", "clusterId", "serviceName",
-                            "anomalyType", title, description, severity, status,
-                            "occurrenceCount", "firstDetectedAt", "lastDetectedAt", evidence
-                        ) VALUES (
-                            :id, :project_id, :cluster_id, :service_name,
-                            'NEW_PATTERN', :title, :description, :severity, :status,
-                            :occ, :first_seen, :last_seen, CAST(:evidence AS jsonb)
-                        )
-                    """),
-                    {
-                        "id": anomaly_id,
-                        "project_id": project_id,
-                        "cluster_id": cid,
-                        "service_name": svc_name,
-                        "title": title,
-                        "description": desc,
-                        "severity": classification,
-                        "status": status_val,
-                        "occ": first_min_count,
-                        "first_seen": first_minute,
-                        "last_seen": first_minute,
-                        "evidence": json.dumps(evidence),
-                    }
-                )
+                anomalies_to_insert.append({
+                    "id": anomaly_id,
+                    "project_id": project_id,
+                    "cluster_id": cid,
+                    "service_name": svc_name,
+                    "anomaly_type": "NEW_PATTERN",
+                    "title": title,
+                    "description": desc,
+                    "severity": classification,
+                    "status": status_val,
+                    "occ": first_min_count,
+                    "first_seen": first_minute,
+                    "last_seen": first_minute,
+                    "evidence": json.dumps(evidence),
+                })
                 existing_set.add(dedup_key)
                 detected_anomalies.append({
                     "id": anomaly_id,
@@ -544,33 +525,21 @@ def detect_and_evaluate_anomalies(
                     sev_class = "CRITICAL" if z_score >= 5.0 or (is_error and z_score >= 3.0) else "HIGH" if z_score >= 3.0 else "MEDIUM"
                     status_class = "ESCALATE" if sev_class in ("CRITICAL", "HIGH") else "MONITOR"
 
-                    db.execute(
-                        text("""
-                            INSERT INTO anomalies (
-                                id, "projectId", "clusterId", "serviceName",
-                                "anomalyType", title, description, severity, status,
-                                "occurrenceCount", "firstDetectedAt", "lastDetectedAt", evidence
-                            ) VALUES (
-                                :id, :project_id, :cluster_id, :service_name,
-                                'SPIKE', :title, :description, :severity, :status,
-                                :occ, :first_seen, :last_seen, CAST(:evidence AS jsonb)
-                            )
-                        """),
-                        {
-                            "id": anomaly_id,
-                            "project_id": project_id,
-                            "cluster_id": cid,
-                            "service_name": svc_name,
-                            "title": title,
-                            "description": desc,
-                            "severity": sev_class,
-                            "status": status_class,
-                            "occ": curr_count,
-                            "first_seen": m_time,
-                            "last_seen": m_time,
-                            "evidence": json.dumps(evidence),
-                        }
-                    )
+                    anomalies_to_insert.append({
+                        "id": anomaly_id,
+                        "project_id": project_id,
+                        "cluster_id": cid,
+                        "service_name": svc_name,
+                        "anomaly_type": "SPIKE",
+                        "title": title,
+                        "description": desc,
+                        "severity": sev_class,
+                        "status": status_class,
+                        "occ": curr_count,
+                        "first_seen": m_time,
+                        "last_seen": m_time,
+                        "evidence": json.dumps(evidence),
+                    })
                     existing_set.add(dedup_key)
                     detected_anomalies.append({
                         "id": anomaly_id,
@@ -580,6 +549,23 @@ def detect_and_evaluate_anomalies(
                         "clusterId": cid,
                         "zScore": z_score,
                     })
+
+    # Batch insert all flagged anomalies in a single database round-trip
+    if anomalies_to_insert:
+        db.execute(
+            text("""
+                INSERT INTO anomalies (
+                    id, "projectId", "clusterId", "serviceName",
+                    "anomalyType", title, description, severity, status,
+                    "occurrenceCount", "firstDetectedAt", "lastDetectedAt", evidence
+                ) VALUES (
+                    :id, :project_id, :cluster_id, :service_name,
+                    :anomaly_type, :title, :description, :severity, :status,
+                    :occ, :first_seen, :last_seen, CAST(:evidence AS jsonb)
+                )
+            """),
+            anomalies_to_insert
+        )
 
     db.commit()
     logger.info(f"Anomaly detection completed. Flagged {len(detected_anomalies)} new anomalies.")
