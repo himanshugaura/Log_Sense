@@ -8,12 +8,10 @@ import {
   UploadCloud,
   ArrowRight,
   CheckCircle2,
-  Sparkles,
   ChevronRight,
   TrendingUp,
   FileText,
   Clock,
-  ShieldCheck,
   Cpu,
 } from 'lucide-react';
 import {
@@ -28,7 +26,6 @@ import {
 import { useAuth } from '@clerk/clerk-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { StatusIndicator } from '../../components/ui/Badge';
 import { useTheme } from '../../context/ThemeContext';
 import { useProject } from '../../context/ProjectContext';
 import { apiClient } from '../../services/api/client';
@@ -96,8 +93,6 @@ export const OverviewPage: React.FC = () => {
   const totalLogs = logCount || logSource?._count?.logEntries || activeProject?._count?.logEntries || 0;
   const errorSpikesCount = anomalies.filter((a) => a.type === 'SPIKE').length;
   const activeIncidents = incidents.filter((i) => i.status !== 'RESOLVED');
-  const primaryIncident = activeIncidents[0] || incidents[0] || null;
-  const topCandidate = primaryIncident?.rootCauseCandidates?.[0] || null;
 
   // Zero-state if no project
   if (!loading && (!activeProjectId || projects.length === 0)) {
@@ -304,88 +299,6 @@ export const OverviewPage: React.FC = () => {
           </div>
         </Card>
       </div>
-
-      {/* Primary Root Cause Analysis (15-Pt Engine) Dossier Card */}
-      {primaryIncident ? (
-        <Card padding="lg" className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-850">
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <StatusIndicator variant={primaryIncident.severity} label={primaryIncident.severity.toUpperCase()} />
-                <span className="font-mono text-xs font-bold text-neutral-400">
-                  Incident: {primaryIncident.id.slice(0, 8)}
-                </span>
-                <span className="text-xs text-neutral-400 font-mono">
-                  {primaryIncident.firstDetected}
-                </span>
-              </div>
-              <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                {primaryIncident.displayTitle || primaryIncident.title}
-              </h2>
-              {primaryIncident.shortDescription && (
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                  {primaryIncident.shortDescription}
-                </p>
-              )}
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/dashboard/incidents/${primaryIncident.id}`)}
-              icon={<ArrowRight className="w-3.5 h-3.5" />}
-            >
-              Open RCA Room
-            </Button>
-          </div>
-
-          {/* AI Synthesis Box */}
-          <div className="p-3.5 rounded-xl bg-neutral-900 text-neutral-100 dark:bg-black border border-neutral-800 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-amber-400 text-xs font-semibold">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Evidence-Backed Root Cause Summary</span>
-            </div>
-            <p className="text-xs leading-relaxed text-neutral-200">
-              {primaryIncident.aiSummary}
-            </p>
-          </div>
-
-          {/* Top Ranked Initiating Pattern */}
-          {topCandidate && (
-            <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-1">
-                <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide block">
-                  Rank #1 Initiating Log Pattern
-                </span>
-                <h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                  {topCandidate.displayTitle || topCandidate.template}
-                </h4>
-                <p className="text-xs text-neutral-500">
-                  {topCandidate.shortDescription || topCandidate.explanation}
-                </p>
-                <div className="mt-1.5 p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-[10px] font-mono text-neutral-600 dark:text-neutral-300 break-words">
-                  <span className="text-[9px] text-neutral-400 uppercase font-sans font-bold block mb-0.5">
-                    Technical Drain3 Template:
-                  </span>
-                  {topCandidate.template}
-                </div>
-              </div>
-
-              <div className="text-right shrink-0">
-                <div className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                  {topCandidate.totalScore} <span className="text-xs font-normal text-neutral-400">/ 15</span>
-                </div>
-                <span className="text-[10px] text-neutral-400 font-mono">RCA Score</span>
-              </div>
-            </div>
-          )}
-        </Card>
-      ) : (
-        <Card padding="md" className="flex items-center gap-3 text-xs text-neutral-500 py-6">
-          <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
-          <span>No active incidents detected. All moving 5-minute statistical baselines are nominal.</span>
-        </Card>
-      )}
 
       {/* Activity Timeline Chart */}
       {totalLogs > 0 && (
