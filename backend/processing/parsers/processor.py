@@ -21,7 +21,7 @@ from intelligence.ai_summary import generate_incident_summary
 logger = logging.getLogger("logsense.processor")
 logging.basicConfig(level=logging.INFO)
 
-BATCH_INSERT_SIZE = 1000
+BATCH_INSERT_SIZE = 2500
 
 class LogProcessor:
     """
@@ -144,6 +144,7 @@ class LogProcessor:
 
         total_processed = 0
         batch_entries: List[dict] = []
+        bucket_map: Dict[Tuple[datetime, str, str], dict] = {}
 
         try:
             # 2. Stream lines (from local disk if available, or fast S3 single fetch)
@@ -181,6 +182,21 @@ class LogProcessor:
                     "metadata": json.dumps(rec.metadata) if rec.metadata else None,
                 })
 
+                # Precompute 1-minute anomaly time bucket in memory (eliminates heavy database GROUP BY query)
+                m_bucket = rec.timestamp.replace(second=0, microsecond=0)
+                b_key = (m_bucket, cluster_uuid, rec.level)
+                if b_key not in bucket_map:
+                    bucket_map[b_key] = {
+                        "cnt": 0,
+                        "min_ts": rec.timestamp,
+                        "sample_service": rec.service_name,
+                    }
+                bucket_map[b_key]["cnt"] += 1
+                if rec.timestamp < bucket_map[b_key]["min_ts"]:
+                    bucket_map[b_key]["min_ts"] = rec.timestamp
+                if rec.service_name and not bucket_map[b_key]["sample_service"]:
+                    bucket_map[b_key]["sample_service"] = rec.service_name
+
                 total_processed += 1
 
                 # Batch flush to avoid memory pressure
@@ -205,15 +221,19 @@ class LogProcessor:
             rca_results = {}
             try:
                 logger.info(f"Executing Statistical Anomaly & Point-based RCA pipeline for project {self.project_id}")
+                precomputed_rows = [
+                    (k[0], k[1], k[2], v["cnt"], v["min_ts"], v["sample_service"])
+                    for k, v in bucket_map.items()
+                ]
                 # Step A: Standard deviation spike detection & new pattern discovery
-                detect_and_evaluate_anomalies(self.db, self.project_id)
+                detect_and_evaluate_anomalies(self.db, self.project_id, precomputed_buckets=precomputed_rows)
 
                 # Step B: Incident Correlation
                 incident_ids = correlate_incidents(self.db, self.project_id)
 
-                # Step C: Point-based RCA Engine (ranking log patterns on primary incidents)
+                # Step C: Point-based RCA Engine (ranking log patterns on top primary incidents)
                 rca = RcaEngine(self.db)
-                for inc_id in incident_ids[:5]:
+                for inc_id in incident_ids[:2]:
                     rca_res = rca.analyze_incident(inc_id)
                     if rca_res:
                         rca_results[inc_id] = rca_res
@@ -235,7 +255,7 @@ class LogProcessor:
             self.db.commit()
             logger.info(f"Ingestion job {job_id} successfully COMPLETED. Processed {total_processed} records.")
 
-            # 10. Generate Incident Explanations (AI / Deterministic) asynchronously for primary incidents
+            # 10. Generate Incident Explanations (AI / Deterministic) asynchronously for primary incidents in background
             if rca_results:
                 def run_summaries():
                     try:
@@ -250,7 +270,6 @@ class LogProcessor:
 
                 summary_thread = threading.Thread(target=run_summaries, daemon=True)
                 summary_thread.start()
-                summary_thread.join(timeout=10.0)
 
             return total_processed
 
@@ -274,6 +293,41 @@ class LogProcessor:
     def _flush_batch(self, entries: List[dict]):
         if not entries:
             return
+
+        # Attempt ultra-fast PostgreSQL streaming COPY via psycopg3 driver
+        try:
+            raw_conn = self.db.connection().connection
+            driver = getattr(raw_conn, "driver_connection", raw_conn)
+            if hasattr(driver, "cursor"):
+                with driver.cursor() as cur:
+                    with cur.copy(
+                        'COPY log_entries (id, "projectId", "sourceId", "clusterId", "serviceName", '
+                        'timestamp, level, "rawMessage", "normalizedMessage", "traceId", "spanId", metadata) '
+                        'FROM STDIN'
+                    ) as copy:
+                        for e in entries:
+                            copy.write_row((
+                                e["id"],
+                                e["projectId"],
+                                e["sourceId"],
+                                e["clusterId"],
+                                e["serviceName"],
+                                e["timestamp"],
+                                e["level"],
+                                e["rawMessage"],
+                                e["normalizedMessage"],
+                                e["traceId"],
+                                e["spanId"],
+                                e["metadata"],
+                            ))
+                self.db.commit()
+                return
+        except Exception as copy_err:
+            logger.debug(f"Fast COPY fallback to parameterized batch insert: {copy_err}")
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
 
         insert_sql = """
             INSERT INTO log_entries (

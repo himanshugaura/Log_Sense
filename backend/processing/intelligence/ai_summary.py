@@ -292,9 +292,9 @@ def generate_incident_summary(
 
     # Optional LLM Enhancement via Gemini with strict plain-English translation instructions
     llm_api_key = os.getenv("GEMINI_API_KEY")
-    used_model = model_name or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    if used_model in ("gemini-3.5-flash-lite", "gemini-3.5", "default"):
-        used_model = "gemini-2.5-flash"
+    used_model = model_name or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    if used_model in ("gemini-3.5-flash-lite", "gemini-3.5", "gemini-2.5-flash", "default"):
+        used_model = "gemini-1.5-flash"
 
     if llm_api_key:
         try:
@@ -331,7 +331,7 @@ Output pure JSON only."""
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{used_model}:generateContent?key={llm_api_key}"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
-            with httpx.Client(timeout=3.5) as client:
+            with httpx.Client(timeout=2.5) as client:
                 res = client.post(url, json=payload)
                 if res.status_code == 200:
                     raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()

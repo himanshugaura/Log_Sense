@@ -102,7 +102,8 @@ def classify_score(total: int) -> str:
 def detect_and_evaluate_anomalies(
     db: Session,
     project_id: str,
-    target_cluster_ids: Optional[List[str]] = None
+    target_cluster_ids: Optional[List[str]] = None,
+    precomputed_buckets: Optional[List[tuple]] = None,
 ) -> List[dict]:
     """
     Implements Parts 2, 3, 4, and 5 of the LogSense Specification:
@@ -145,23 +146,26 @@ def detect_and_evaluate_anomalies(
         logger.info("No clusters found for anomaly detection.")
         return []
 
-    # 2. Fetch 1-minute bucket time-series of log entries across the project
+    # 2. Fetch or reuse 1-minute bucket time-series of log entries across the project
     # Grouped by (minute_bucket, cluster_id, level)
-    bucket_rows = db.execute(
-        text("""
-            SELECT date_trunc('minute', timestamp) as minute_bucket,
-                   "clusterId",
-                   level,
-                   COUNT(*) as cnt,
-                   MIN(timestamp) as min_ts,
-                   MAX("serviceName") as sample_service
-            FROM log_entries
-            WHERE "projectId" = :project_id AND "clusterId" IS NOT NULL
-            GROUP BY minute_bucket, "clusterId", level
-            ORDER BY minute_bucket ASC
-        """),
-        {"project_id": project_id}
-    ).fetchall()
+    if precomputed_buckets is not None:
+        bucket_rows = precomputed_buckets
+    else:
+        bucket_rows = db.execute(
+            text("""
+                SELECT date_trunc('minute', timestamp) as minute_bucket,
+                       "clusterId",
+                       level,
+                       COUNT(*) as cnt,
+                       MIN(timestamp) as min_ts,
+                       MAX("serviceName") as sample_service
+                FROM log_entries
+                WHERE "projectId" = :project_id AND "clusterId" IS NOT NULL
+                GROUP BY minute_bucket, "clusterId", level
+                ORDER BY minute_bucket ASC
+            """),
+            {"project_id": project_id}
+        ).fetchall()
 
     if not bucket_rows:
         logger.info("No log entry time buckets found.")
