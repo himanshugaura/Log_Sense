@@ -208,7 +208,7 @@ export const logService = {
   },
 
   /**
-   * Fast indexed polling check for a single processing job
+   * Fast indexed polling check for a single processing job (bypasses client cache)
    */
   async getProcessingJobById(projectId: string, jobId: string): Promise<ProcessingJob | null> {
     if (!apiClient.isBackendConnected || !projectId || !jobId) {
@@ -216,10 +216,29 @@ export const logService = {
     }
 
     try {
-      const res = await apiClient.fetchEndpoint<{ job: ProcessingJob }>(
-        `/logs/${projectId}/jobs/${jobId}`
+      const res = await apiClient.fetchEndpoint<{ job: any }>(
+        `/logs/${projectId}/jobs/${jobId}`,
+        { skipCache: true }
       );
-      return res?.job || null;
+      if (res?.job) {
+        const j = res.job;
+        const total = j.totalItems || 0;
+        const processed = j.processedItems || 0;
+        const pct = total > 0 ? Math.round((processed / total) * 100) : (j.status === 'COMPLETED' ? 100 : 45);
+        return {
+          id: j.id,
+          projectId: j.projectId,
+          logSourceId: j.logSourceId || '',
+          status: j.status,
+          progressPercentage: pct,
+          processedLines: processed,
+          totalLines: total || undefined,
+          errorMessage: j.errorMessage,
+          startedAt: j.createdAt,
+          completedAt: j.completedAt,
+        };
+      }
+      return null;
     } catch (err) {
       console.warn(`Failed to fetch processing job ${jobId}:`, err);
       return null;

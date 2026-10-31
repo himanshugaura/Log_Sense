@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && tsc && (python3 -m pip install -r processing/requirements.txt --break-system-packages || pip3 install -r processing/requirements.txt || pip install -r processing/requirements.txt || true)",
     "start": "node dist/server.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

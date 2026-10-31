@@ -10,6 +10,7 @@
     "dev:processing": "cd backend/processing && .venv/Scripts/python -m uvicorn main:app --reload --port 8000",
     "build": "pnpm --filter frontend build",
     "build:frontend": "pnpm --filter frontend build",
-    "build:backend": "pnpm --filter my-app build"
+    "build:backend": "pnpm --filter my-app build",
+    "postinstall": "(python3 -m pip install -r backend/processing/requirements.txt --break-system-packages || pip3 install -r backend/processing/requirements.txt || pip install -r backend/processing/requirements.txt || true)"
   }
 }

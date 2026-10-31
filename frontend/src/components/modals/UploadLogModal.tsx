@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { logService } from '../../services/log-service';
+import { apiClient } from '../../services/api/client';
 import { ProcessingJob } from '../../types';
 
 interface UploadLogModalProps {
@@ -91,7 +92,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
 
       if (jobId) {
         let attempts = 0;
-        const maxAttempts = 60; // 60 * 1.2s = ~72 seconds
+        const maxAttempts = 180; // 180 * 2.0s = 360 seconds (6 minutes)
 
         const pollJobStatus = async () => {
           if (pollingTimerRef.current === null) return;
@@ -104,6 +105,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
               if (current.status === 'COMPLETED') {
                 if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
                 pollingTimerRef.current = null;
+                apiClient.clearCache();
                 setUploadState('success');
                 onSuccess?.();
                 return;
@@ -128,13 +130,14 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
             return;
           }
 
-          // Schedule next check only AFTER the previous request finished (fast 1200ms interval)
-          pollingTimerRef.current = setTimeout(pollJobStatus, 1200);
+          // Schedule next check after 2000ms
+          pollingTimerRef.current = setTimeout(pollJobStatus, 2000);
         };
 
-        // First check after 800ms
-        pollingTimerRef.current = setTimeout(pollJobStatus, 800);
+        // First check after 1000ms
+        pollingTimerRef.current = setTimeout(pollJobStatus, 1000);
       } else {
+        apiClient.clearCache();
         setUploadState('success');
         onSuccess?.();
       }

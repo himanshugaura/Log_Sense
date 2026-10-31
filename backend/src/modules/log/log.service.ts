@@ -1,5 +1,5 @@
 import { StatusCodes } from "http-status-codes";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 
@@ -223,7 +223,7 @@ export class LogService {
   }
 
   /**
-   * Spawns backend/processing/run_job.py directly using the virtualenv python binary
+   * Spawns backend/processing/run_job.py directly using the virtualenv or system python binary
    */
   private async spawnPythonWorkerFallback(payload: {
     jobId: string;
@@ -241,7 +241,7 @@ export class LogService {
       path.resolve(process.cwd(), "..", "backend", "processing", ".venv", isWindows ? "Scripts/python.exe" : "bin/python"),
     ];
 
-    let pythonBin = "python";
+    let pythonBin = isWindows ? "python" : "python3";
     for (const cand of candidates) {
       if (fs.existsSync(cand)) {
         pythonBin = cand;
@@ -249,8 +249,18 @@ export class LogService {
       }
     }
 
+    // On Linux/Unix, verify system python3 paths if not in virtualenv
+    if (!isWindows && !pythonBin.includes(".venv")) {
+      for (const p of ["/usr/bin/python3", "/usr/local/bin/python3"]) {
+        if (fs.existsSync(p)) {
+          pythonBin = p;
+          break;
+        }
+      }
+    }
+
     // On Windows, prefer pythonw.exe to run completely headless without opening a terminal window
-    if (isWindows) {
+    if (isWindows && pythonBin.endsWith("python.exe")) {
       const pythonwCand = pythonBin.replace(/python\.exe$/i, "pythonw.exe");
       if (fs.existsSync(pythonwCand)) {
         pythonBin = pythonwCand;
@@ -275,6 +285,42 @@ export class LogService {
       throw new Error("Could not find run_job.py script in workspace");
     }
 
+    // Auto-install required Python dependencies if missing (especially in Linux/Render containers)
+    if (!isWindows) {
+      try {
+        execSync(`${pythonBin} -c "import drain3, sqlalchemy, psycopg, boto3"`, {
+          stdio: "ignore",
+          timeout: 4000,
+        });
+      } catch {
+        logger.warn(`Python dependencies missing for ${pythonBin}. Attempting auto-installation...`);
+        const reqCandidates = [
+          path.resolve(process.cwd(), "processing", "requirements.txt"),
+          path.resolve(process.cwd(), "backend", "processing", "requirements.txt"),
+          path.resolve(process.cwd(), "..", "backend", "processing", "requirements.txt"),
+        ];
+        let reqFile = "";
+        for (const r of reqCandidates) {
+          if (fs.existsSync(r)) {
+            reqFile = r;
+            break;
+          }
+        }
+        if (reqFile) {
+          try {
+            logger.info(`Installing Python dependencies from ${reqFile}...`);
+            execSync(`${pythonBin} -m pip install -r "${reqFile}" --break-system-packages`, {
+              stdio: "inherit",
+              timeout: 60000,
+            });
+            logger.info("Successfully installed Python dependencies.");
+          } catch (pipErr: any) {
+            logger.error(`Failed to auto-install Python dependencies: ${pipErr.message}`);
+          }
+        }
+      }
+    }
+
     const args = [
       scriptPath,
       "--job-id", payload.jobId,
@@ -287,7 +333,7 @@ export class LogService {
       args.push("--local-path", payload.filePath);
     }
 
-    logger.info(`Spawning background Python worker silently: ${pythonBin} ${args.join(" ")}`);
+    logger.info(`Spawning background Python worker: ${pythonBin} ${args.join(" ")}`);
 
     // Redirect worker stdout and stderr to a log file instead of inheriting the console
     const logDir = path.resolve(process.cwd(), "tmp");
@@ -303,6 +349,58 @@ export class LogService {
       stdio: ["ignore", outFd, outFd],
       detached: false,
       windowsHide: true,
+      env: {
+        ...process.env,
+        PYTHONPATH: path.dirname(scriptPath),
+      },
+    });
+
+    child.on("error", async (err) => {
+      logger.error(`Python child process spawn error for job ${payload.jobId}: ${err.message}`);
+      await prisma.processingJob
+        .update({
+          where: { id: payload.jobId },
+          data: {
+            status: "FAILED",
+            errorMessage: `Worker process spawn error: ${err.message}`,
+            completedAt: new Date(),
+          },
+        })
+        .catch(() => {});
+    });
+
+    child.on("close", async (code) => {
+      if (code !== 0) {
+        logger.error(`Python CLI worker exited with error code ${code} for job ${payload.jobId}`);
+        let lastError = `Worker process exited with code ${code}`;
+        try {
+          if (fs.existsSync(logFile)) {
+            const content = fs.readFileSync(logFile, "utf-8");
+            const lines = content.trim().split("\n");
+            lastError = lines.slice(-4).join(" ") || lastError;
+          }
+        } catch (_) {}
+
+        const job = await prisma.processingJob.findUnique({ where: { id: payload.jobId } });
+        if (job && job.status !== "COMPLETED") {
+          await prisma.processingJob
+            .update({
+              where: { id: payload.jobId },
+              data: {
+                status: "FAILED",
+                errorMessage: lastError.slice(0, 500),
+                completedAt: new Date(),
+              },
+            })
+            .catch(() => {});
+        }
+      } else {
+        logger.info(`Python CLI worker completed successfully for job ${payload.jobId}`);
+        memoryCache.invalidatePrefix(`log_sources:${payload.projectId}`);
+        memoryCache.invalidatePrefix(`anomalies_list:${payload.projectId}`);
+        memoryCache.invalidatePrefix(`incidents_list:${payload.projectId}`);
+        memoryCache.invalidatePrefix(`log_entries:${payload.projectId}`);
+      }
     });
 
     child.unref();
@@ -411,6 +509,10 @@ export class LogService {
   async getLogClusters(projectId: string, userId: string, query: GetLogClustersQuery) {
     await this.validateProjectOwnership(projectId, userId);
 
+    const cacheKey = `clusters_list:${projectId}:${query.search || ''}:${query.page || 1}:${query.limit || 50}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
     const where: any = {
       parserState: {
         projectId,
@@ -504,6 +606,10 @@ export class LogService {
    */
   async getLogEntries(projectId: string, userId: string, query: GetLogEntriesQuery) {
     await this.validateProjectOwnership(projectId, userId);
+
+    const cacheKey = `logs_list:${projectId}:${query.level || ''}:${query.clusterId || ''}:${query.sourceId || ''}:${query.search || ''}:${query.page || 1}:${query.limit || 50}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
 
     const where: any = { projectId };
 
@@ -614,7 +720,6 @@ export class LogService {
       },
     };
 
-    memoryCache.set(cacheKey, result, 20);
     return result;
   }
 
