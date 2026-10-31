@@ -26,11 +26,13 @@ import {
   X,
   FileCode2,
   AlertCircle,
+  UploadCloud,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { StatusIndicator } from '../../components/ui/Badge';
+import { UploadLogModal } from '../../components/modals/UploadLogModal';
 import { ServiceNode } from './ServiceNode';
 import { DependencyGraph, DependencyGraphNode } from '../../types';
 import { serviceMapService } from '../../services/service-map-service';
@@ -65,6 +67,9 @@ export const ServiceMapPage: React.FC = () => {
   const [linkType, setLinkType] = useState('HTTP');
   const [creatingLink, setCreatingLink] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+
+  const [uploadLogModalOpen, setUploadLogModalOpen] = useState(false);
+  const [uploadTargetService, setUploadTargetService] = useState<{ id: string; name: string } | null>(null);
 
   const isDark = theme === 'dark';
 
@@ -277,6 +282,23 @@ export const ServiceMapPage: React.FC = () => {
             Refresh
           </Button>
 
+          {nodes.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const found = graphData?.nodes.find((n) => n.id === selectedServiceId) || graphData?.nodes[0];
+                if (found) {
+                  setUploadTargetService({ id: found.id, name: found.name });
+                }
+                setUploadLogModalOpen(true);
+              }}
+              icon={<UploadCloud className="w-3.5 h-3.5" />}
+            >
+              Upload Service Logs
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"
@@ -459,12 +481,24 @@ export const ServiceMapPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-neutral-100 dark:border-neutral-850">
+              <div className="pt-3 border-t border-neutral-100 dark:border-neutral-850 space-y-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => {
+                    setUploadTargetService({ id: selectedNodeData.id, name: selectedNodeData.name });
+                    setUploadLogModalOpen(true);
+                  }}
+                  icon={<UploadCloud className="w-3.5 h-3.5" />}
+                >
+                  Upload Logs for {selectedNodeData.name}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full justify-center"
-                  onClick={() => navigate(`/dashboard/logs?service=${selectedNodeData.name}`)}
+                  onClick={() => navigate(`/dashboard/logs?service=${encodeURIComponent(selectedNodeData.name)}`)}
                   icon={<FileCode2 className="w-3.5 h-3.5" />}
                 >
                   Query Logs for {selectedNodeData.name}
@@ -627,6 +661,19 @@ export const ServiceMapPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Upload Log Modal for Specific Service */}
+      <UploadLogModal
+        isOpen={uploadLogModalOpen}
+        onClose={() => {
+          setUploadLogModalOpen(false);
+          setUploadTargetService(null);
+        }}
+        projectId={activeProjectId}
+        targetService={uploadTargetService}
+        availableServices={graphData?.nodes.map((n) => ({ id: n.id, name: n.name })) || []}
+        onSuccess={loadGraph}
+      />
     </div>
   );
 };

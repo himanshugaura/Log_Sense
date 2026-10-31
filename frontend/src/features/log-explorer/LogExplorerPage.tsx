@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search,
   Filter,
@@ -30,14 +30,18 @@ import { useProject } from '../../context/ProjectContext';
 
 export const LogExplorerPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { activeProject, activeProjectId } = useProject();
+
+  const urlService = searchParams.get('service') || '';
+  const urlUpload = searchParams.get('upload') === 'true';
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [totalLogs, setTotalLogs] = useState(0);
   const [services, setServices] = useState<ServiceNodeData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedService, setSelectedService] = useState('all');
+  const [selectedService, setSelectedService] = useState(urlService || 'all');
   const [selectedLevel, setSelectedLevel] = useState('all');
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -47,7 +51,7 @@ export const LogExplorerPage: React.FC = () => {
   const pageSize = 15;
 
   // Real Backend Multipart Upload Workflow
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(urlUpload);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadServiceId, setUploadServiceId] = useState<string>('all');
@@ -62,6 +66,26 @@ export const LogExplorerPage: React.FC = () => {
     if (!activeProjectId) return;
     serviceMapService.getServices(activeProjectId).then(setServices).catch(console.warn);
   }, [activeProjectId]);
+
+  useEffect(() => {
+    if (urlService) {
+      setSelectedService(urlService);
+    }
+    if (urlUpload) {
+      setUploadModalOpen(true);
+    }
+  }, [urlService, urlUpload]);
+
+  useEffect(() => {
+    if (urlService && services.length > 0) {
+      const match = services.find(
+        (s) => s.name.toLowerCase() === urlService.toLowerCase() || s.id === urlService
+      );
+      if (match) {
+        setUploadServiceId(match.id);
+      }
+    }
+  }, [urlService, services]);
 
   const fetchLogs = async () => {
     if (!activeProjectId) return;

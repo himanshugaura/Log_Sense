@@ -10,11 +10,14 @@ import {
   AlertCircle,
   Loader2,
   Zap,
+  UploadCloud,
+  FileCode2,
 } from 'lucide-react';
 import { WorkspaceHeader } from '../../components/layout/WorkspaceHeader';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { UploadLogModal } from '../../components/modals/UploadLogModal';
 import { useProject } from '../../context/ProjectContext';
 import { serviceMapService } from '../../services/service-map-service';
 import { ServiceNodeData } from '../../types';
@@ -31,6 +34,7 @@ export const ServicesPage: React.FC = () => {
   const [serviceDesc, setServiceDesc] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadModalService, setUploadModalService] = useState<{ id: string; name: string } | null>(null);
 
   const loadServices = async () => {
     if (!projectId) return;
@@ -181,34 +185,55 @@ export const ServicesPage: React.FC = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {services.map((svc) => (
-                <Card key={svc.id} padding="md" className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-800 dark:text-neutral-200 shrink-0 mt-0.5">
-                      <Cpu className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                          {svc.name}
-                        </span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 font-semibold">
-                          Active Node
-                        </span>
+                <Card key={svc.id} padding="md" className="flex flex-col justify-between gap-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-800 dark:text-neutral-200 shrink-0 mt-0.5">
+                        <Cpu className="w-4 h-4" />
                       </div>
-                      <p className="text-xs text-neutral-500 mt-1 font-mono">
-                        Dependencies: {svc.dependencies?.length || 0} configured
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                            {svc.name}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 font-semibold">
+                            Active Node
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-500 mt-1 font-mono">
+                          Dependencies: {svc.dependencies?.length || 0} configured
+                        </p>
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(svc.id)}
+                      className="p-1.5 text-neutral-400 hover:text-red-500 transition-colors rounded-lg shrink-0"
+                      title="Delete Service"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(svc.id)}
-                    className="p-1.5 text-neutral-400 hover:text-red-500 transition-colors rounded-lg shrink-0"
-                    title="Delete Service"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="pt-3 border-t border-neutral-100 dark:border-neutral-850 flex items-center justify-between gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setUploadModalService({ id: svc.id, name: svc.name })}
+                      icon={<UploadCloud className="w-3.5 h-3.5" />}
+                    >
+                      Upload Logs to {svc.name}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate(`/dashboard/logs?service=${encodeURIComponent(svc.name)}`)}
+                      icon={<FileCode2 className="w-3.5 h-3.5" />}
+                    >
+                      View Logs
+                    </Button>
+                  </div>
                 </Card>
               ))}
             </div>
@@ -341,6 +366,15 @@ export const ServicesPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Upload Log Modal for Specific Service */}
+        <UploadLogModal
+          isOpen={!!uploadModalService}
+          onClose={() => setUploadModalService(null)}
+          projectId={projectId || ''}
+          targetService={uploadModalService}
+          onSuccess={loadServices}
+        />
       </main>
     </div>
   );
