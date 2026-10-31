@@ -12,7 +12,6 @@ import {
   Loader2,
 } from 'lucide-react';
 import { WorkspaceHeader } from '../../components/layout/WorkspaceHeader';
-import { SetupStepper } from '../../components/shared/SetupStepper';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -78,8 +77,6 @@ export const OrganizationsPage: React.FC = () => {
       />
 
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        <SetupStepper currentStep={1} />
-
         {/* Section Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-neutral-800">
           <div>
