@@ -250,7 +250,7 @@ class LogProcessor:
 
                 summary_thread = threading.Thread(target=run_summaries, daemon=True)
                 summary_thread.start()
-                summary_thread.join(timeout=1.5)
+                summary_thread.join(timeout=10.0)
 
             return total_processed
 

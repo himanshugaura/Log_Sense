@@ -10,10 +10,30 @@ import httpx
 
 logger = logging.getLogger("logsense.summary")
 
+def get_friendly_category_and_title(template: str) -> tuple[str, str]:
+    """
+    Translates raw log signatures into user-friendly incident titles.
+    """
+    t_lower = (template or "").lower()
+    if any(k in t_lower for k in ["hikaripool", "connection pool", "pool exhausted", "borrowobject"]):
+        return "Database Connection Pool", "Possible database connection pool problem"
+    elif any(k in t_lower for k in ["connection broken", "broken pipe", "closed socket", "socket closed", "connection refused", "connection reset"]):
+        return "Network Connectivity", "Possible network or database connectivity problem"
+    elif any(k in t_lower for k in ["interrupting sendworker", "interrupted while waiting", "leaving thread", "worker thread"]):
+        return "Background Task Worker", "Possible background task worker interruption"
+    elif any(k in t_lower for k in ["session", "timed out", "timeout", "expiring session", "notification time out"]):
+        return "Session & Heartbeat", "Possible session timeout or connection interruption"
+    elif any(k in t_lower for k in ["ioexception", "file not found", "disk full"]):
+        return "File System & Storage", "Possible disk or storage communication error"
+    elif any(k in t_lower for k in ["outofmemory", "oom", "heap space"]):
+        return "System Resources", "Possible memory exhaustion or high resource pressure"
+    else:
+        return "Application Service", "Possible application service error spike"
+
 def explain_technical_log_pattern(template: str) -> dict:
     """
-    Decodes unfamiliar or technical Drain3 log templates into plain-English explanations.
-    Explains which subsystem the pattern is associated with and what it generally indicates.
+    Translates unfamiliar or technical Drain3 log templates into plain-English explanations.
+    Explains which component the pattern is associated with and what it generally indicates.
     """
     t_lower = (template or "").lower()
     clean_tmpl = template[:100] if template else "Unknown Pattern"
@@ -22,19 +42,19 @@ def explain_technical_log_pattern(template: str) -> dict:
         return {
             "pattern": clean_tmpl,
             "component": "Database Connection Pool",
-            "explanation": "This message is associated with the application's database connection pool manager. It generally indicates that all available database connections are exhausted or blocked, forcing incoming worker threads to wait and eventually time out.",
+            "explanation": "This message is associated with the application's database connection pool. It generally indicates that all available database connections were exhausted, causing incoming requests to wait and time out.",
         }
     elif any(k in t_lower for k in ["connection broken", "broken pipe", "closed socket", "socket closed", "connection refused", "connection reset"]):
         return {
             "pattern": clean_tmpl,
             "component": "TCP / Network Socket Layer",
-            "explanation": "This message is associated with underlying network communication channels. It generally indicates that an active network socket was abruptly terminated or reset by the remote peer, load balancer, or firewall keep-alive timeout.",
+            "explanation": "This message is associated with network communication channels. It generally indicates that an active network connection was abruptly closed or reset by the remote peer or an intermediary gateway.",
         }
     elif any(k in t_lower for k in ["interrupting sendworker", "interrupted while waiting", "leaving thread", "worker thread", "executor"]):
         return {
             "pattern": clean_tmpl,
             "component": "Asynchronous Worker Thread Pool",
-            "explanation": "This message is associated with internal background task executors and worker threads. It generally indicates that an active worker thread was forcibly interrupted or aborted due to an upstream socket drop or queue backpressure.",
+            "explanation": "This message is associated with internal background task executors. It generally indicates that an active communication worker thread was forcibly interrupted due to an upstream connection failure.",
         }
     elif any(k in t_lower for k in ["session", "timed out", "timeout", "expiring session", "notification time out"]):
         return {
@@ -46,19 +66,19 @@ def explain_technical_log_pattern(template: str) -> dict:
         return {
             "pattern": clean_tmpl,
             "component": "File System & I/O Subsystem",
-            "explanation": "This message is associated with storage and I/O channels. It generally indicates an operating system level failure while attempting to read or write local data.",
+            "explanation": "This message is associated with local disk or socket I/O operations. It indicates an operating system level failure while attempting to read or write data.",
         }
     elif any(k in t_lower for k in ["outofmemory", "oom", "heap space", "gc overhead"]):
         return {
             "pattern": clean_tmpl,
             "component": "Runtime Memory Subsystem",
-            "explanation": "This message is associated with process memory allocation. It indicates severe memory pressure or allocation stalls, preventing the service from handling incoming tasks.",
+            "explanation": "This message is associated with application memory allocation. It indicates high memory pressure, preventing the service from handling incoming tasks.",
         }
     else:
         return {
             "pattern": clean_tmpl,
             "component": "Application Service Runtime",
-            "explanation": "This message is associated with application execution and indicates an unhandled error condition or operational warning encountered during request execution.",
+            "explanation": "This message indicates an unhandled error condition or operational warning encountered during request execution.",
         }
 
 def generate_incident_summary(
@@ -69,14 +89,17 @@ def generate_incident_summary(
 ) -> dict:
     """
     Implements Part 8 of the LogSense Specification:
-    Synthesizes technical anomaly data and 15-point deterministic RCA findings into
-    a simple, plain-English incident explanation:
-    1. Simple Explanation ("What happened?" & "Potential impact")
-    2. Root cause explanation (why the top pattern scored X/15 points)
-    3. Investigation recommendations (evidence-based suggestions)
-    4. Explanation of unfamiliar/complex Drain3 log patterns
+    Transforms technical anomaly data and 15-point deterministic RCA findings into
+    a user-friendly, plain-English incident explanation with 6 clear sections:
+    1. What happened? (Simple summary of the problem)
+    2. What might be causing it? (Strongest root-cause candidate in simple terms)
+    3. Why do we think this? (Evidence supporting the candidate without raw math)
+    4. What else was affected? (Other related errors or components)
+    5. What should you do? (Actionable investigation steps)
+    6. How certain are we? (Analysis confidence & uncertainty)
+    Preserves all technical math and scoring in an expandable Technical Evidence section for developers.
     """
-    logger.info(f"Generating structured incident explanation for incident {incident_id}")
+    logger.info(f"Generating user-friendly incident explanation for incident {incident_id}")
 
     incident = db.execute(
         text("SELECT id, \"projectId\", title, description, severity, \"startedAt\" FROM incidents WHERE id = :id"),
@@ -96,6 +119,8 @@ def generate_incident_summary(
     top_score = top_candidate.get("totalScore", 0.0)
     confidence = rca_result.get("confidence", 0.8)
     candidates = rca_result.get("candidates", [])
+
+    component_name, friendly_title = get_friendly_category_and_title(top_template)
 
     # Fetch sample raw log lines for top candidate cluster
     raw_samples = []
@@ -128,109 +153,118 @@ def generate_incident_summary(
     total_matching_errors = sum((la[3] or 1) for la in linked_anomalies) or top_candidate.get("maxOccurrence", 1)
     affected_clusters_set = set()
     secondary_pattern_names = []
+    baseline_mean = 1.0
 
     for la in linked_anomalies:
         if la[5]:
             affected_clusters_set.add(str(la[5]))
         ev = la[1] if isinstance(la[1], dict) else {}
-        if isinstance(ev, dict) and "affectedClusters" in ev:
-            for aff in ev["affectedClusters"]:
-                if isinstance(aff, dict):
-                    cid = aff.get("clusterId")
-                    if cid:
-                        affected_clusters_set.add(str(cid))
-                    tmpl = aff.get("template")
-                    if tmpl and tmpl != top_template:
-                        secondary_pattern_names.append(tmpl)
+        if isinstance(ev, dict):
+            b_info = ev.get("baseline", {})
+            if "mean" in b_info:
+                baseline_mean = float(b_info["mean"])
+            if "affectedClusters" in ev:
+                for aff in ev["affectedClusters"]:
+                    if isinstance(aff, dict):
+                        cid = aff.get("clusterId")
+                        if cid:
+                            affected_clusters_set.add(str(cid))
+                        tmpl = aff.get("template")
+                        if tmpl and tmpl != top_template:
+                            secondary_pattern_names.append(tmpl)
 
     if top_candidate.get("clusterId"):
         affected_clusters_set.add(top_candidate["clusterId"])
 
     affected_patterns_count = max(len(affected_clusters_set), len(candidates), 1)
 
-    # 1. Plain-English "What happened?" and "Potential impact"
-    top_clean_name = top_template.replace("<*>", "parameters").strip()
+    # Clean template snippet for plain language
+    top_clean_name = top_template.replace("<*>", "").strip()
     if len(top_clean_name) > 60:
         top_clean_name = top_clean_name[:60] + "..."
 
-    secondary_mention = ""
-    if secondary_pattern_names:
-        clean_sec = secondary_pattern_names[0].replace("<*>", "parameters").strip()
-        if len(clean_sec) > 50:
-            clean_sec = clean_sec[:50] + "..."
-        secondary_mention = f", followed by cascading spikes in '{clean_sec}'"
-
+    # 1. Section: What happened? (A simple summary of the problem)
     what_happened = (
-        f"A sudden statistical surge in '{top_clean_name}' was detected with {total_matching_errors} matching errors "
-        f"across the investigation window{secondary_mention}. Multiple related log patterns appeared contemporaneously."
+        f"Your application started experiencing an unusually high number of {component_name.lower()} errors. "
+        f"Other errors also increased around the same time."
     )
 
-    t_lower = top_template.lower()
-    if any(k in t_lower for k in ["session", "timed out", "timeout"]):
-        potential_impact = "Users may experience session interruptions, sudden logouts, or failed request authentications."
-    elif any(k in t_lower for k in ["connection", "socket", "network", "broken pipe"]):
-        potential_impact = "Users may experience request timeouts, failed transactions, or transient connection drops."
-    elif any(k in t_lower for k in ["pool", "deadlock", "lock"]):
-        potential_impact = "Application threads may stall, causing elevated response latency and service unresponsiveness."
-    else:
-        potential_impact = "Users may experience degraded performance or intermittent error responses across affected operations."
-
-    # 2. Plain-English "Why it received that score"
-    temporal_pts = top_candidate.get("temporalPoints", 0)
-    freq_pts = top_candidate.get("frequencyPoints", 0)
-    rel_pts = top_candidate.get("relationshipPoints", 0)
-    class_pts = top_candidate.get("classificationPoints", 0)
-    max_occ = top_candidate.get("maxOccurrence", total_matching_errors)
-    max_z = top_candidate.get("maxZScore", 0.0)
-
-    rca_explanation = (
-        f"Your RCA engine ranks '{top_clean_name}' as the strongest candidate with {top_score:.1f}/15 points. "
-        f"It was selected because it initiated earliest in the failure cascade, surged significantly beyond baseline, "
-        f"and had multiple downstream error patterns appear immediately afterward."
+    # 2. Section: What might be causing it? (The strongest root-cause candidate in plain English)
+    what_might_be_causing_it = (
+        f"Our analysis suggests that {component_name.lower()} issues (initiated by '{top_clean_name}') "
+        f"could be the main source of the problem."
     )
 
-    rca_bullets = [
-        f"It appeared before the other abnormal patterns (Temporal precedence: {temporal_pts:.0f}/4 pts).",
-        f"Its occurrence count increased significantly (Statistical surge: {freq_pts:.0f}/4 pts, peak volume: {max_occ} logs/min with Z-score {max_z:.1f}).",
-        f"Other potentially related error patterns appeared afterward (Cascading relationship: {rel_pts:.0f}/4 pts).",
-        f"Structural failure signature matches direct disruption rather than secondary symptoms (Error classification: {class_pts:.0f}/3 pts).",
+    # 3. Section: Why do we think this? (Evidence supporting candidate in plain English)
+    why_do_we_think_this = [
+        f"{component_name} errors appeared before the other abnormal patterns.",
+        "These errors increased significantly compared with normal activity.",
+        "Other application errors appeared shortly afterward.",
     ]
 
-    # 3. Investigation Recommendations (Framed as evidence-based suggestions)
-    if any(k in t_lower for k in ["connection", "socket", "refused", "reset"]):
-        recommendations = [
-            "Check database and external service availability.",
-            "Inspect socket allocation and network connectivity between application pods.",
-            "Review database and service timeout configurations.",
-            "Check database server and proxy logs for abrupt connection terminations.",
+    # 4. Section: What else was affected? (Other related errors or patterns)
+    if secondary_pattern_names:
+        clean_sec = secondary_pattern_names[0].replace("<*>", "").strip()
+        if len(clean_sec) > 50:
+            clean_sec = clean_sec[:50] + "..."
+        what_else_was_affected = (
+            f"Shortly after the initial disturbance, secondary errors such as '{clean_sec}' and background worker interruptions "
+            f"were triggered across {affected_patterns_count} related error patterns."
+        )
+    else:
+        what_else_was_affected = (
+            f"Multiple worker threads and secondary operations were impacted during the same 10-minute detection window, "
+            f"accounting for {total_matching_errors} matching errors."
+        )
+
+    # 5. Section: What should you do? (Actionable, numbered investigation steps)
+    t_lower = top_template.lower()
+    if any(k in t_lower for k in ["hikaripool", "connection pool", "pool"]):
+        what_should_i_do = [
+            "Check whether your database is running and accepting new connections.",
+            "Check database connection pool limits and active connection lifetimes.",
+            "Review connection timeout settings and verify no slow queries are locking connections.",
+            "Investigate the database server logs around the incident time.",
         ]
-    elif any(k in t_lower for k in ["pool", "hikaripool", "exhausted"]):
-        recommendations = [
-            "Inspect database connection pool limits and active connection lifetimes.",
-            "Check for unclosed database connections or slow queries blocking pool threads.",
-            "Review database server CPU and active session capacity.",
-            "Check application connection acquire timeout thresholds.",
+    elif any(k in t_lower for k in ["connection", "socket", "network", "broken pipe"]):
+        what_should_i_do = [
+            "Check network connectivity between application pods and external services.",
+            "Inspect socket allocation and firewall keep-alive timeout settings.",
+            "Review connection retry and backoff configurations in your client.",
+            "Check host and gateway logs for network drops or proxy restarts.",
         ]
     elif any(k in t_lower for k in ["session", "timed out", "timeout"]):
-        recommendations = [
+        what_should_i_do = [
             "Verify cluster heartbeat latency and network stability.",
             "Inspect garbage collection (GC) pauses causing heartbeat lease expirations.",
             "Review session timeout settings and client reconnect backoff limits.",
-            "Check downstream consumer and server event loop responsiveness.",
+            "Check server event loop responsiveness around the incident window.",
         ]
     else:
-        recommendations = [
-            f"Inspect the initiating log pattern parameters matching '{top_clean_name}'.",
-            "Review application logs surrounding the detection window for preceding configuration changes.",
-            "Check system resource metrics (CPU, memory, and disk I/O) at the time of the perturbation.",
-            "Verify downstream service health and retry policies.",
+        what_should_i_do = [
+            f"Inspect the application log lines containing '{top_clean_name}'.",
+            "Check system resource usage (CPU, memory, disk I/O) at the time of the incident.",
+            "Review any recent deployments or configuration updates that coincided with the spike.",
+            "Investigate upstream and downstream dependency health.",
         ]
 
-    # 4. Explain Unfamiliar / Technical Log Patterns
+    # 6. Section: How certain are we? (Analysis confidence & uncertainty)
+    how_certain_are_we = {
+        "badge": "Strongest candidate, not confirmed",
+        "explanation": "Our analysis identifies the most likely explanation from available logs. Further investigation is needed to confirm the actual cause.",
+    }
+
+    # Potential impact for user-facing awareness
+    if any(k in t_lower for k in ["session", "timed out", "timeout"]):
+        potential_impact = "Users may experience session interruptions, sudden logouts, or failed request authentications."
+    elif any(k in t_lower for k in ["connection", "socket", "network", "broken pipe", "pool"]):
+        potential_impact = "Users may experience connection timeouts, failed transactions, or transient request drops."
+    else:
+        potential_impact = "Users may experience degraded response times or intermittent error messages."
+
+    # Unfamiliar log patterns explained in simple language
     unfamiliar_patterns = []
-    # Top candidate pattern
     unfamiliar_patterns.append(explain_technical_log_pattern(top_template))
-    # Secondary candidate patterns
     for c in candidates[1:3]:
         c_tmpl = c.get("template")
         if c_tmpl and c_tmpl != top_template:
@@ -243,7 +277,31 @@ def generate_incident_summary(
         "candidateCount": len(candidates),
     }
 
-    # Optional LLM Enhancement via Gemini if configured
+    # Technical evidence package for developers (math, Z-scores, 15-point RCA)
+    technical_evidence = {
+        "primaryTemplate": top_template,
+        "totalScore": top_score,
+        "temporalPoints": top_candidate.get("temporalPoints", 0),
+        "frequencyPoints": top_candidate.get("frequencyPoints", 0),
+        "classificationPoints": top_candidate.get("classificationPoints", 0),
+        "relationshipPoints": top_candidate.get("relationshipPoints", 0),
+        "maxOccurrence": top_candidate.get("maxOccurrence", total_matching_errors),
+        "maxZScore": round(top_candidate.get("maxZScore", 0.0), 2),
+        "baselineMean": round(baseline_mean, 2),
+        "confidence": confidence,
+        "candidates": [
+            {
+                "rank": c.get("rank"),
+                "template": c.get("template"),
+                "totalScore": c.get("totalScore"),
+                "explanation": c.get("explanation"),
+            }
+            for c in candidates[:4]
+        ],
+        "rawSamples": raw_samples,
+    }
+
+    # Optional LLM Enhancement via Gemini with strict plain-English translation instructions
     llm_api_key = os.getenv("GEMINI_API_KEY")
     used_model = model_name or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     if used_model in ("gemini-3.5-flash-lite", "gemini-3.5", "default"):
@@ -251,30 +309,35 @@ def generate_incident_summary(
 
     if llm_api_key:
         try:
-            prompt = f"""You are an expert Site Reliability Engineer explaining a production log incident to application developers.
-Statistical Anomaly Detection and Deterministic 15-Point Root Cause Analysis produced this verified evidence:
+            prompt = f"""You are an AI Incident Assistant explaining an application issue to a general user who wants plain-English answers, NOT technical jargon.
 
-Incident Title: {inc_title} (Severity: {inc_sev}, Started At: {started_at.strftime('%Y-%m-%d %H:%M:%S UTC')})
-Primary Initiating Log Pattern: {top_template}
-RCA Score: {top_score:.1f}/15 Points
-Score Breakdown:
-- Temporal Precedence: {temporal_pts}/4 pts (appeared before other patterns)
-- Frequency Spike: {freq_pts}/4 pts (peak volume: {max_occ} logs/min, Z-score: {max_z:.2f})
-- Classification: {class_pts}/3 pts
-- Relationship to Affected Patterns: {rel_pts}/4 pts
+Evidence from logs:
+- Primary Root Cause Candidate: {top_template}
+- Subsystem: {component_name}
+- Total Error Count: {total_matching_errors} in a 10-minute window (spiked significantly from normal baseline)
+- Secondary Affected Patterns: {secondary_pattern_names[:3]}
+- Temporal Order: Primary pattern started before other errors appeared
 
-Total Matching Errors in Window: {total_matching_errors}
-Affected Pattern Count: {affected_patterns_count}
-Secondary Patterns: {secondary_pattern_names[:3]}
+Translate this technical data into a user-friendly incident explanation with EXACTLY these 6 sections in JSON:
+1. "friendlyTitle": Clear non-technical title (e.g. "Possible database connectivity problem")
+2. "whatHappened": 2 simple sentences in plain language (e.g. "Your application started experiencing an unusually high number of database connection failures. Other errors also increased around the same time.")
+3. "whatMightBeCausingIt": 1 sentence identifying the possible underlying cause in simple terms (e.g. "Our analysis suggests that database connectivity could be the main source of the problem.")
+4. "whyDoWeThinkThis": Array of 3 plain-English bullet points:
+   - "{component_name} errors appeared before the other abnormal patterns."
+   - "These errors increased significantly compared with normal activity."
+   - "Other application errors appeared shortly afterward."
+5. "whatElseWasAffected": 1-2 simple sentences explaining what other application parts or patterns were impacted.
+6. "whatShouldIDo": Array of 4 clear, actionable numbered steps (e.g. "Check whether your database is running.", "Check database connection limits.", "Review connection timeout settings.", "Investigate database logs around the incident time.")
+7. "potentialImpact": 1 sentence describing user impact (e.g. "Users may experience session interruptions or failed requests.")
 
-Generate a structured JSON response with EXACTLY these keys:
-1. "whatHappened": Convert the technical anomaly data into a simple, plain-English 2-sentence explanation of what occurred.
-2. "potentialImpact": 1 sentence explaining what users or requests may experience.
-3. "rootCauseExplanation": 2 sentences explaining why the top candidate received its RCA score (it appeared before others, count surged, others followed).
-4. "rcaBullets": Array of 3 short bullet points explaining why it received the score.
-5. "investigationRecommendations": Array of 4 suggestions based on detected evidence for what developers should investigate next.
+Translation rules:
+- "Statistical frequency spike" -> "Errors occurred much more frequently than usual"
+- "Temporal precedence" -> "This error appeared before the other errors"
+- "Cascading relationship" -> "Other errors appeared shortly afterward"
+- "Root cause candidate" -> "Possible underlying cause"
+- "Baseline deviation" -> "Difference from normal application behaviour"
 
-Do NOT invent fictitious services. Output pure JSON."""
+Output pure JSON only."""
 
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{used_model}:generateContent?key={llm_api_key}"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -283,60 +346,69 @@ Do NOT invent fictitious services. Output pure JSON."""
                 res = client.post(url, json=payload)
                 if res.status_code == 200:
                     raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    # Clean markdown codeblocks if wrapped
                     if raw_text.startswith("```json"):
                         raw_text = raw_text[7:]
                     if raw_text.endswith("```"):
                         raw_text = raw_text[:-3]
                     parsed_llm = json.loads(raw_text.strip())
+
+                    if "friendlyTitle" in parsed_llm:
+                        friendly_title = parsed_llm.get("friendlyTitle", friendly_title)
                     if "whatHappened" in parsed_llm:
                         what_happened = parsed_llm.get("whatHappened", what_happened)
+                    if "whatMightBeCausingIt" in parsed_llm:
+                        what_might_be_causing_it = parsed_llm.get("whatMightBeCausingIt", what_might_be_causing_it)
+                    if "whyDoWeThinkThis" in parsed_llm and isinstance(parsed_llm["whyDoWeThinkThis"], list):
+                        why_do_we_think_this = parsed_llm["whyDoWeThinkThis"]
+                    if "whatElseWasAffected" in parsed_llm:
+                        what_else_was_affected = parsed_llm.get("whatElseWasAffected", what_else_was_affected)
+                    if "whatShouldIDo" in parsed_llm and isinstance(parsed_llm["whatShouldIDo"], list):
+                        what_should_i_do = parsed_llm["whatShouldIDo"]
                     if "potentialImpact" in parsed_llm:
                         potential_impact = parsed_llm.get("potentialImpact", potential_impact)
-                    if "rootCauseExplanation" in parsed_llm:
-                        rca_explanation = parsed_llm.get("rootCauseExplanation", rca_explanation)
-                    if "rcaBullets" in parsed_llm and isinstance(parsed_llm["rcaBullets"], list):
-                        rca_bullets = parsed_llm["rcaBullets"]
-                    if "investigationRecommendations" in parsed_llm and isinstance(parsed_llm["investigationRecommendations"], list):
-                        recommendations = parsed_llm["investigationRecommendations"]
         except Exception as e:
-            logger.info(f"Using deterministic synthesis ({e})")
+            logger.info(f"Using deterministic human synthesis ({e})")
 
-    # Construct the full structured report dictionary
+    # Complete structured report containing user-friendly sections + technical evidence
     structured_report = {
+        "friendlyTitle": friendly_title,
         "whatHappened": what_happened,
+        "whatMightBeCausingIt": what_might_be_causing_it,
+        "whyDoWeThinkThis": why_do_we_think_this,
+        "whatElseWasAffected": what_else_was_affected,
+        "whatShouldIDo": what_should_i_do,
+        "howCertainAreWe": how_certain_are_we,
         "potentialImpact": potential_impact,
-        "rootCauseExplanation": rca_explanation,
-        "rcaBullets": rca_bullets,
         "unfamiliarPatterns": unfamiliar_patterns,
-        "investigationRecommendations": recommendations,
         "metrics": metrics,
+        "technicalEvidence": technical_evidence,
     }
 
-    # Format human-readable markdown summary
-    unfamiliar_md_lines = []
-    for up in unfamiliar_patterns:
-        unfamiliar_md_lines.append(f"- **`{up['pattern']}`** ({up['component']}): {up['explanation']}")
+    # Format human-readable markdown summary adhering to the 6-section structure
+    why_md = "\n".join(f"- {b}" for b in why_do_we_think_this)
+    steps_md = "\n".join(f"{idx+1}. {step}" for idx, step in enumerate(what_should_i_do))
 
-    unfamiliar_section = "\n".join(unfamiliar_md_lines) if unfamiliar_md_lines else "- No complex unfamiliar patterns."
-    rec_bullets = "\n".join(f"{idx+1}. {r}" for idx, r in enumerate(recommendations))
-    bullets_text = "\n".join(f"- {b}" for b in rca_bullets)
+    summary_text = f"""### Incident analysis
+**{friendly_title}**
 
-    summary_text = f"""### What happened?
+#### What happened?
 {what_happened}
 
-### Potential impact
-{potential_impact}
+#### What might be causing it?
+{what_might_be_causing_it}
 
-### Root cause explanation
-{rca_explanation}
-{bullets_text}
+#### Why do we think this?
+{why_md}
 
-### Unfamiliar log patterns explained
-{unfamiliar_section}
+#### What else was affected?
+{what_else_was_affected}
 
-### Investigation recommendations
-{rec_bullets}
+#### What should you do?
+{steps_md}
+
+#### Analysis confidence
+**{how_certain_are_we['badge']}**  
+{how_certain_are_we['explanation']}
 """
 
     summary_id = str(uuid.uuid4())
@@ -370,6 +442,5 @@ Do NOT invent fictitious services. Output pure JSON."""
         "incidentId": incident_id,
         "summary": summary_text,
         "structuredReport": structured_report,
-        "recommendations": recommendations,
         "model": used_model,
     }
