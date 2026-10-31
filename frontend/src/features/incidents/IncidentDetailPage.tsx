@@ -176,12 +176,39 @@ export const IncidentDetailPage: React.FC = () => {
     Math.max(incident.rootCauseCandidates.length, 2);
 
   // User-friendly display title
-  const displayTitle = report?.friendlyTitle || incident.title;
+  const displayTitle =
+    report?.friendlyTitle ||
+    (incident.title.startsWith('Incident:') ? incident.title.replace(/^Incident:\s*/i, '') : incident.title);
+
+  // Dynamic plain-English fallbacks when AI report isn't pre-computed
+  const cleanTemplate = incident.suspectedRootCauseTemplate || topCandidate?.template || '';
+
+  const defaultWhatHappened = cleanTemplate
+    ? `An unexpected surge in '${cleanTemplate.slice(0, 60)}' log events was detected (${totalMatchingErrors} occurrences vs normal baseline). Related errors appeared during the same investigation window.`
+    : 'An unexpected surge in application error patterns was detected during the monitoring window.';
+
+  const defaultWhatMightBeCausingIt = cleanTemplate
+    ? `Our analysis suggests that issues related to '${cleanTemplate.slice(0, 50)}' could be the main source of the problem.`
+    : 'Our analysis suggests that upstream resource saturation or communication disruptions could be the main source of the problem.';
+
+  const defaultWhyBullets = [
+    'This error pattern appeared before other abnormal patterns in the timeline.',
+    'These errors increased significantly compared with normal baseline activity.',
+    'Other application errors and worker disruptions appeared shortly afterward.',
+  ];
+
+  const defaultWhatElse =
+    'Downstream worker threads and client request handlers experienced elevated latency or failure rates shortly afterward.';
+
+  const defaultSteps = [
+    'Check whether the affected service or database is running normally.',
+    'Inspect network socket connectivity and connection limits.',
+    'Review timeout configurations and error thresholds.',
+    'Investigate application logs around the incident timestamp.',
+  ];
 
   // Section 1: What happened?
-  const whatHappenedText =
-    report?.whatHappened ||
-    'Your application started experiencing an unusually high number of database connection failures. Other errors also increased around the same time.';
+  const whatHappenedText = report?.whatHappened || defaultWhatHappened;
 
   // Section 2: Potential impact
   const potentialImpactText =
@@ -189,35 +216,22 @@ export const IncidentDetailPage: React.FC = () => {
     'Users may experience session interruptions, degraded response times, or failed requests.';
 
   // Section 3: What might be causing it?
-  const whatMightBeCausingIt =
-    report?.whatMightBeCausingIt ||
-    'Our analysis suggests that database connectivity could be the main source of the problem.';
+  const whatMightBeCausingIt = report?.whatMightBeCausingIt || defaultWhatMightBeCausingIt;
 
   // Section 4: Why do we think this? (Plain-English translated evidence)
   const whyDoWeThinkThis =
     report?.whyDoWeThinkThis && report.whyDoWeThinkThis.length > 0
       ? report.whyDoWeThinkThis
-      : [
-          'Database connection errors appeared before the other abnormal patterns.',
-          'These errors increased significantly compared with normal activity.',
-          'Other application errors appeared shortly afterward.',
-        ];
+      : defaultWhyBullets;
 
   // Section 5: What else was affected?
-  const whatElseWasAffected =
-    report?.whatElseWasAffected ||
-    'Other errors appeared shortly afterward, including user retrieval failures and request timeouts.';
+  const whatElseWasAffected = report?.whatElseWasAffected || defaultWhatElse;
 
   // Section 6: What should you do?
   const whatShouldIDo =
     report?.whatShouldIDo && report.whatShouldIDo.length > 0
       ? report.whatShouldIDo
-      : [
-          'Check whether your database is running.',
-          'Check database connection limits.',
-          'Review connection timeout settings.',
-          'Investigate the database logs around the incident time.',
-        ];
+      : defaultSteps;
 
   // Section 7: How certain are we?
   const howCertainAreWe = report?.howCertainAreWe || {
@@ -263,144 +277,135 @@ export const IncidentDetailPage: React.FC = () => {
       </div>
 
       {/* =========================================================================
-          HERO REPORT CARD - Exact screenshot design
+          INCIDENT HEADER & KEY STATS (Theme-aligned, clean Card)
           ========================================================================= */}
-      <div className="rounded-2xl bg-[#0a0a0a] text-white p-6 sm:p-8 border border-neutral-850 shadow-2xl space-y-7">
-        {/* Header row: Incident # + Severity badge */}
-        <div className="flex items-center justify-between pb-1">
-          <span className="font-sans text-xs sm:text-sm font-semibold tracking-wide text-neutral-400">
-            Incident #INC-{incident.id.slice(0, 4).toUpperCase()}
-          </span>
+      <Card padding="lg" className="space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2.5">
+              <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                Incident #INC-{incident.id.slice(0, 4).toUpperCase()}
+              </span>
 
-          <span
-            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-              incident.severity === 'critical'
-                ? 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
-                : 'bg-amber-950/80 text-amber-400 border border-amber-800/60'
-            }`}
-          >
-            {incident.severity.toUpperCase()}
-          </span>
+              <span
+                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                  incident.severity === 'critical'
+                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/80 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60'
+                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/80 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60'
+                }`}
+              >
+                {incident.severity.toUpperCase()}
+              </span>
+            </div>
+
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+              {displayTitle}
+            </h1>
+          </div>
+
+          {/* Status & Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/80 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+              <span>{incident.status === 'OPEN' ? 'Needs investigation' : incident.status}</span>
+            </div>
+
+            {incident.status !== 'INVESTIGATING' && incident.status !== 'RESOLVED' && (
+              <button
+                type="button"
+                disabled={statusUpdating}
+                onClick={() => handleStatusChange('INVESTIGATING')}
+                className="px-3 py-1 rounded-full text-xs font-medium border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer"
+              >
+                Mark Investigating
+              </button>
+            )}
+
+            {incident.status !== 'RESOLVED' ? (
+              <button
+                type="button"
+                disabled={statusUpdating}
+                onClick={() => handleStatusChange('RESOLVED')}
+                className="px-3 py-1 rounded-full text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Mark Resolved</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={statusUpdating}
+                onClick={() => handleStatusChange('OPEN')}
+                className="px-3 py-1 rounded-full text-xs font-medium border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reopen</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Title and Subtitle */}
-        <div className="space-y-1">
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            {displayTitle}
-          </h1>
-          <p className="text-xs sm:text-sm text-neutral-400 font-sans">
-            Illustrative incident report
-          </p>
-        </div>
-
-        {/* 4 Stat Metrics Grid (Exact screenshot design) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-2 pb-4">
-          <div>
-            <div className="text-3xl sm:text-4xl font-bold font-display text-rose-500">
+        {/* 4 Summary Metric Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1">
+          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
+            <div className="text-2xl sm:text-3xl font-bold font-sans text-rose-600 dark:text-rose-400">
               {affectedPatternsCount}
             </div>
-            <div className="text-xs text-neutral-400 font-sans mt-1.5">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
               Affected patterns
             </div>
           </div>
 
-          <div>
-            <div className="text-3xl sm:text-4xl font-bold font-display text-white">
+          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
+            <div className="text-2xl sm:text-3xl font-bold font-sans text-neutral-900 dark:text-neutral-100">
               {detectionWindow}
             </div>
-            <div className="text-xs text-neutral-400 font-sans mt-1.5">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
               Detection window
             </div>
           </div>
 
-          <div>
-            <div className="text-3xl sm:text-4xl font-bold font-display text-white">
+          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
+            <div className="text-2xl sm:text-3xl font-bold font-sans text-neutral-900 dark:text-neutral-100">
               {totalMatchingErrors}
             </div>
-            <div className="text-xs text-neutral-400 font-sans mt-1.5">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
               Total matching errors
             </div>
           </div>
 
-          <div>
-            <div className="text-3xl sm:text-4xl font-bold font-display text-amber-500">
+          <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800">
+            <div className="text-2xl sm:text-3xl font-bold font-sans text-amber-600 dark:text-amber-400">
               {candidateCount}
             </div>
-            <div className="text-xs text-neutral-400 font-sans mt-1.5">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
               Root cause candidates
             </div>
           </div>
         </div>
+      </Card>
 
-        {/* Section 1: What happened? */}
-        <div className="space-y-2 pt-2 border-t border-neutral-900">
-          <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+      {/* =========================================================================
+          SECTION 1: WHAT HAPPENED? & POTENTIAL IMPACT
+          ========================================================================= */}
+      <Card padding="lg" className="space-y-4">
+        <div className="space-y-2">
+          <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">
             What happened?
-          </h3>
-          <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed font-sans">
+          </h2>
+          <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
             {whatHappenedText}
           </p>
         </div>
 
-        {/* Section 2: Potential impact */}
-        <div className="space-y-2">
-          <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-            Potential impact
+        <div className="space-y-1.5 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+          <h3 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+            Potential Impact
           </h3>
-          <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed font-sans">
+          <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
             {potentialImpactText}
           </p>
         </div>
-
-        {/* Section 3: Investigation status */}
-        <div className="space-y-2.5 pt-2">
-          <h3 className="text-xs sm:text-sm font-bold text-neutral-300 tracking-tight">
-            Investigation status
-          </h3>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-400 border border-amber-800/60">
-              <span>{incident.status === 'OPEN' ? 'Needs investigation' : incident.status}</span>
-              <ArrowDown className="w-3.5 h-3.5" />
-            </div>
-
-            {/* Status action buttons */}
-            <div className="flex items-center gap-2">
-              {incident.status !== 'INVESTIGATING' && incident.status !== 'RESOLVED' && (
-                <button
-                  type="button"
-                  disabled={statusUpdating}
-                  onClick={() => handleStatusChange('INVESTIGATING')}
-                  className="px-3 py-1 rounded-full text-xs font-medium border border-neutral-700 bg-neutral-900 text-neutral-300 hover:text-white hover:border-neutral-500 transition-colors cursor-pointer"
-                >
-                  Mark Investigating
-                </button>
-              )}
-
-              {incident.status !== 'RESOLVED' ? (
-                <button
-                  type="button"
-                  disabled={statusUpdating}
-                  onClick={() => handleStatusChange('RESOLVED')}
-                  className="px-3 py-1 rounded-full text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>Mark Resolved</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={statusUpdating}
-                  onClick={() => handleStatusChange('OPEN')}
-                  className="px-3 py-1 rounded-full text-xs font-medium border border-neutral-700 bg-neutral-900 text-neutral-300 hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reopen</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      </Card>
 
       {/* =========================================================================
           SECTION 2: WHAT MIGHT BE CAUSING IT? & WHY DO WE THINK THIS?
