@@ -13,6 +13,16 @@ const envSchema = z.object({
   CLERK_SECRET_KEY: z.string().default(""),
   CLERK_WEBHOOK_SECRET: z.string().default(""),
 
+  // Neon Object Storage / AWS S3
+  AWS_ENDPOINT_URL_S3: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  AWS_REGION: z.string().default("us-east-2"),
+  STORAGE_BUCKET_NAME: z.string().default("logicsense-bucket"),
+
+  // Python Processing Service URL
+  PROCESSING_SERVICE_URL: z.string().default("http://localhost:8000"),
+
   JWT_ACCESS_SECRET: z.string().default("dev_jwt_access_secret"),
   JWT_ACCESS_EXPIRES_IN: z.string().default("1d"),
   JWT_REFRESH_SECRET: z.string().default("dev_jwt_refresh_secret"),
