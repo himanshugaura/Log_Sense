@@ -26,7 +26,6 @@ import { StatusIndicator } from '../../components/ui/Badge';
 import { Anomaly, SeverityLevel, AnomalyType, ServiceNodeData } from '../../types';
 import { anomalyService } from '../../services/anomaly-service';
 import { serviceMapService } from '../../services/service-map-service';
-import { MOCK_ACTIVITY_CHART } from '../../mocks';
 import { useTheme } from '../../context/ThemeContext';
 import { useProject } from '../../context/ProjectContext';
 
@@ -129,25 +128,31 @@ export const AnomaliesPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="h-56 mt-4 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={MOCK_ACTIVITY_CHART}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-              <XAxis dataKey="time" stroke={textColor} fontSize={11} tickLine={false} />
-              <YAxis stroke={textColor} fontSize={11} tickLine={false} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: tooltipBg,
-                  borderColor: tooltipBorder,
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  color: isDark ? '#fff' : '#000',
-                }}
-              />
-              <Bar dataKey="anomalies" fill="#b45309" radius={[4, 4, 0, 0]} name="Anomaly Spikes" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {anomalies.length > 0 ? (
+          <div className="h-56 mt-4 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={anomalies.map((a, i) => ({ time: a.timestamp.slice(11, 16) || `A${i + 1}`, anomalies: typeof a.observedValue === 'number' ? a.observedValue : 1 }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                <XAxis dataKey="time" stroke={textColor} fontSize={11} tickLine={false} />
+                <YAxis stroke={textColor} fontSize={11} tickLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: tooltipBg,
+                    borderColor: tooltipBorder,
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    color: isDark ? '#fff' : '#000',
+                  }}
+                />
+                <Bar dataKey="anomalies" fill="#b45309" radius={[4, 4, 0, 0]} name="Observed Value" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-44 flex flex-col items-center justify-center text-center p-4 text-xs text-neutral-500">
+            <p>No anomaly bursts detected in the active project.</p>
+          </div>
+        )}
       </Card>
 
       {/* Two Column Section: Anomaly List & Focused Dossier */}

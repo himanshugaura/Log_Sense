@@ -126,6 +126,9 @@ export const DashboardLayout: React.FC = () => {
             onChange={handleProjectSelect}
             className="w-full text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-2.5 py-1.5 text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-neutral-900 dark:focus:border-neutral-100 cursor-pointer"
           >
+            {projects.length === 0 && (
+              <option value="">No active project</option>
+            )}
             {projects.map((proj) => (
               <option key={proj.id} value={proj.id}>
                 {proj.name}
@@ -204,7 +207,7 @@ export const DashboardLayout: React.FC = () => {
               </Link>
               <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
               <span className="text-neutral-500 dark:text-neutral-400 hidden sm:inline">
-                {activeProject?.name || 'Production'}
+                {activeProject?.name || 'Workspace'}
               </span>
               <ChevronRight className="w-3.5 h-3.5 text-neutral-400 hidden sm:inline" />
               <span className="font-semibold text-neutral-900 dark:text-neutral-100">

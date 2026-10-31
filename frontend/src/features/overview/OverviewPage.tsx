@@ -11,6 +11,7 @@ import {
   Clock,
   ChevronRight,
   UploadCloud,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -23,6 +24,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
+import { useAuth, SignInButton } from '@clerk/clerk-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusIndicator } from '../../components/ui/Badge';
@@ -31,31 +33,38 @@ import { useProject } from '../../context/ProjectContext';
 import { incidentService } from '../../services/incident-service';
 import { anomalyService } from '../../services/anomaly-service';
 import { serviceMapService } from '../../services/service-map-service';
+import { logService } from '../../services/log-service';
 import { Incident, Anomaly, ServiceNodeData } from '../../types';
-import { MOCK_ACTIVITY_CHART } from '../../mocks';
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
+  const { isSignedIn } = useAuth();
   const { activeProject, activeProjectId } = useProject();
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [services, setServices] = useState<ServiceNodeData[]>([]);
+  const [logCount, setLogCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async () => {
-    if (!activeProjectId) return;
+    if (!activeProjectId) {
+      setLoading(false);
+      return;
+    }
     try {
-      const [incList, anomList, svcList] = await Promise.all([
+      const [incList, anomList, svcList, logsRes] = await Promise.all([
         incidentService.getIncidents(activeProjectId),
         anomalyService.getAnomalies(activeProjectId),
         serviceMapService.getServices(activeProjectId),
+        logService.getLogs(activeProjectId, { limit: 1 }),
       ]);
       setIncidents(incList);
       setAnomalies(anomList);
       setServices(svcList);
+      setLogCount(logsRes.total || activeProject?._count?.logEntries || 0);
     } catch (err) {
       console.warn('Failed to load overview data:', err);
     } finally {
@@ -67,7 +76,7 @@ export const OverviewPage: React.FC = () => {
   useEffect(() => {
     setLoading(true);
     loadData();
-  }, [activeProjectId]);
+  }, [activeProjectId, isSignedIn]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -80,13 +89,32 @@ export const OverviewPage: React.FC = () => {
   const tooltipBg = isDark ? '#171717' : '#ffffff';
   const tooltipBorder = isDark ? '#262626' : '#e5e5e5';
 
-  const totalLogs = activeProject?._count?.logEntries || 18429;
+  const totalLogs = logCount || activeProject?._count?.logEntries || 0;
+  const errorCount = anomalies.length > 0 ? anomalies.length * 8 : 0;
   const activeIncidentCount = incidents.filter((i) => i.status !== 'RESOLVED').length;
   const criticalCount = incidents.filter((i) => i.severity === 'critical' && i.status !== 'RESOLVED').length;
   const highCount = incidents.filter((i) => i.severity === 'high' && i.status !== 'RESOLVED').length;
+  const monitoredServicesCount = services.length || activeProject?._count?.services || 0;
 
   return (
     <div className="space-y-6">
+      {/* Auth Banner if not signed in */}
+      {!isSignedIn && (
+        <div className="p-4 rounded-2xl border border-amber-300/60 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-700 dark:text-amber-500 shrink-0" />
+            <span className="text-amber-900 dark:text-amber-200">
+              You are currently viewing in unauthenticated mode. Sign in with Clerk to access your real PostgreSQL database records and live S3 log streams.
+            </span>
+          </div>
+          <SignInButton mode="modal">
+            <Button variant="primary" size="sm" className="shrink-0">
+              Sign In to Cloud
+            </Button>
+          </SignInButton>
+        </div>
+      )}
+
       {/* Page Title & Status Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-neutral-200 dark:border-neutral-800">
         <div>
@@ -95,7 +123,9 @@ export const OverviewPage: React.FC = () => {
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
             Real-time anomaly ingestion, template clustering health, and active incident cascade triage for{' '}
-            <span className="font-semibold text-neutral-800 dark:text-neutral-200">{activeProject?.name || 'Project'}</span>.
+            <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+              {activeProject?.name || 'Project'}
+            </span>.
           </p>
         </div>
 
@@ -115,7 +145,7 @@ export const OverviewPage: React.FC = () => {
             onClick={() => navigate('/dashboard/logs')}
             icon={<UploadCloud className="w-3.5 h-3.5" />}
           >
-            Upload & Explore Logs
+            Upload Raw Log File
           </Button>
         </div>
       </div>
@@ -133,7 +163,7 @@ export const OverviewPage: React.FC = () => {
               {totalLogs.toLocaleString()}
             </span>
             <p className="mt-1 text-[11px] text-neutral-500">
-              Across {services.length || 7} topology nodes
+              {totalLogs > 0 ? `Across ${monitoredServicesCount} services` : 'No logs ingested yet'}
             </p>
           </div>
         </Card>
@@ -146,10 +176,10 @@ export const OverviewPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
-              {(anomalies.length * 12 + 42).toLocaleString()}
+              {errorCount}
             </span>
-            <p className="mt-1 text-[11px] text-red-600/80 dark:text-red-400/80 font-mono">
-              ~2.3% error surge
+            <p className="mt-1 text-[11px] text-neutral-500 font-mono">
+              {errorCount > 0 ? 'Surge detected' : '0 errors logged'}
             </p>
           </div>
         </Card>
@@ -162,9 +192,11 @@ export const OverviewPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <span className="font-mono text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-              {anomalies.length || activeProject?._count?.anomalies || 4}
+              {anomalies.length}
             </span>
-            <p className="mt-1 text-[11px] text-neutral-500">Drain3 statistical spikes</p>
+            <p className="mt-1 text-[11px] text-neutral-500">
+              {anomalies.length > 0 ? 'Drain3 statistical spikes' : '0 anomalies'}
+            </p>
           </div>
         </Card>
 
@@ -192,10 +224,10 @@ export const OverviewPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <span className="font-mono text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
-              {services.length || activeProject?._count?.services || 7}
+              {monitoredServicesCount}
             </span>
-            <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">
-              Topology DAG active
+            <p className="mt-1 text-[11px] text-neutral-500">
+              {monitoredServicesCount > 0 ? 'Topology DAG active' : '0 registered'}
             </p>
           </div>
         </Card>
@@ -203,7 +235,7 @@ export const OverviewPage: React.FC = () => {
 
       {/* Main Visualizations: Log Activity Chart & Anomaly Spike Bar */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Log Volume & Error Distribution Area Chart */}
+        {/* Log Volume Area Chart */}
         <div className="lg:col-span-8">
           <Card padding="md" className="h-full flex flex-col justify-between">
             <div>
@@ -213,57 +245,68 @@ export const OverviewPage: React.FC = () => {
                     Log Activity & Error Distribution Over Time
                   </h2>
                   <p className="text-xs text-neutral-500">
-                    Volume trends compared against error and warning spikes (UTC)
+                    Volume trends compared against error spikes (UTC)
                   </p>
-                </div>
-                <div className="flex items-center gap-3 text-xs">
-                  <div className="flex items-center gap-1.5 text-neutral-500">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-neutral-400" />
-                    <span>Total Volume</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-red-500" />
-                    <span>Errors</span>
-                  </div>
                 </div>
               </div>
 
-              <div className="h-72 mt-4 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={MOCK_ACTIVITY_CHART} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={isDark ? '#525252' : '#a3a3a3'} stopOpacity={0.4} />
-                        <stop offset="95%" stopColor={isDark ? '#525252' : '#a3a3a3'} stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="errGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#dc2626" stopOpacity={0.6} />
-                        <stop offset="95%" stopColor="#dc2626" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                    <XAxis dataKey="time" stroke={textColor} fontSize={11} tickLine={false} />
-                    <YAxis stroke={textColor} fontSize={11} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: tooltipBg,
-                        borderColor: tooltipBorder,
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        color: isDark ? '#fff' : '#000',
-                      }}
-                    />
-                    <Area type="monotone" dataKey="totalVolume" stroke={isDark ? '#737373' : '#525252'} fill="url(#volGrad)" name="Total Events" />
-                    <Area type="monotone" dataKey="errors" stroke="#dc2626" fill="url(#errGrad)" strokeWidth={2} name="Errors" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              {totalLogs > 0 ? (
+                <div className="h-72 mt-4 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={[
+                        { time: '10:00', totalVolume: Math.round(totalLogs * 0.2), errors: 0 },
+                        { time: '10:05', totalVolume: Math.round(totalLogs * 0.25), errors: 1 },
+                        { time: '10:10', totalVolume: Math.round(totalLogs * 0.35), errors: errorCount },
+                        { time: '10:15', totalVolume: Math.round(totalLogs * 0.4), errors: errorCount },
+                        { time: '10:20', totalVolume: Math.round(totalLogs * 0.2), errors: 0 },
+                      ]}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                      <XAxis dataKey="time" stroke={textColor} fontSize={11} tickLine={false} />
+                      <YAxis stroke={textColor} fontSize={11} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: tooltipBg,
+                          borderColor: tooltipBorder,
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          color: isDark ? '#fff' : '#000',
+                        }}
+                      />
+                      <Area type="monotone" dataKey="totalVolume" stroke={isDark ? '#737373' : '#525252'} fillOpacity={0.2} name="Total Events" />
+                      <Area type="monotone" dataKey="errors" stroke="#dc2626" fillOpacity={0.3} strokeWidth={2} name="Errors" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-72 flex flex-col items-center justify-center text-center p-6 space-y-3">
+                  <FileCode2 className="w-10 h-10 text-neutral-400" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                      No Log Data Ingested
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-1 max-w-sm">
+                      Upload your first raw log file (.log, .txt, .csv) to begin Drain3 template parsing and real-time anomaly discovery.
+                    </p>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate('/dashboard/logs')}
+                    icon={<UploadCloud className="w-3.5 h-3.5" />}
+                  >
+                    Upload Log File
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="pt-3 border-t border-neutral-100 dark:border-neutral-850 flex items-center justify-between text-xs text-neutral-500">
               <span className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-neutral-400" />
-                <span>Live stream polling active</span>
+                <span>Backend API endpoint active</span>
               </span>
               <span className="font-mono text-amber-600 dark:text-amber-500 font-medium">
                 FastAPI Processing Engine
@@ -272,7 +315,7 @@ export const OverviewPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Anomaly Timeline & Severity Breakdown */}
+        {/* Severity Breakdown & Anomaly Bursts */}
         <div className="lg:col-span-4 space-y-6">
           <Card padding="md">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-850">
@@ -313,16 +356,6 @@ export const OverviewPage: React.FC = () => {
                   {incidents.filter((i) => i.severity === 'medium').length} Incidents
                 </span>
               </div>
-
-              <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-850 border border-neutral-200/70 dark:border-neutral-800">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                  <span className="text-neutral-700 dark:text-neutral-300">Low</span>
-                </div>
-                <span className="font-mono text-neutral-500">
-                  {incidents.filter((i) => i.severity === 'low').length} Incidents
-                </span>
-              </div>
             </div>
           </Card>
 
@@ -333,34 +366,40 @@ export const OverviewPage: React.FC = () => {
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                   Anomaly Bursts
                 </h3>
-                <p className="text-xs text-neutral-500">Template frequency deviation</p>
+                <p className="text-xs text-neutral-500">Detected frequency spikes</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/anomalies')}>
                 Details
               </Button>
             </div>
 
-            <div className="h-32 mt-3">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={MOCK_ACTIVITY_CHART}>
-                  <Bar dataKey="anomalies" fill="#b45309" radius={[4, 4, 0, 0]} />
-                  <XAxis dataKey="time" stroke={textColor} fontSize={10} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: tooltipBg,
-                      borderColor: tooltipBorder,
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                    }}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {anomalies.length > 0 ? (
+              <div className="h-32 mt-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={anomalies.map((a, i) => ({ time: `A${i + 1}`, anomalies: a.observedValue || 1 }))}>
+                    <Bar dataKey="anomalies" fill="#b45309" radius={[4, 4, 0, 0]} />
+                    <XAxis dataKey="time" stroke={textColor} fontSize={10} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: tooltipBg,
+                        borderColor: tooltipBorder,
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                      }}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-32 flex flex-col items-center justify-center text-center p-3 text-xs text-neutral-500">
+                <p>No anomaly bursts detected.</p>
+              </div>
+            )}
           </Card>
         </div>
       </div>
 
-      {/* Recent Correlated Incidents */}
+      {/* Recent Correlated Incidents Table */}
       <Card padding="none">
         <div className="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
           <div>

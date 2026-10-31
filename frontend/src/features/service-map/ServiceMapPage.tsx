@@ -66,7 +66,12 @@ export const ServiceMapPage: React.FC = () => {
   const isDark = theme === 'dark';
 
   const loadGraph = useCallback(async () => {
-    if (!activeProjectId) return;
+    if (!activeProjectId) {
+      setNodes([]);
+      setEdges([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const graph = await serviceMapService.getDependencyGraph(activeProjectId);
@@ -261,8 +266,31 @@ export const ServiceMapPage: React.FC = () => {
                 size={1}
                 color={isDark ? '#262626' : '#d4d4d4'}
               />
-              <Controls className="!bg-white dark:!bg-[#171717] !border-neutral-200 dark:!border-neutral-800 !rounded-xl !shadow-xs" />
+              <Controls className="!bg-white dark:!bg-[#171717] !border-neutral-200 dark:border-neutral-800 !rounded-xl !shadow-xs" />
             </ReactFlow>
+
+            {/* Empty State Overlay */}
+            {nodes.length === 0 && !loading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 z-10 bg-white/80 dark:bg-[#121212]/80 backdrop-blur-xs">
+                <Network className="w-10 h-10 text-neutral-400" />
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                    No Services in DAG Topology
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-1 max-w-sm">
+                    Register your microservices to start mapping upstream and downstream traffic dependencies.
+                  </p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setRegisterModalOpen(true)}
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  Register First Service
+                </Button>
+              </div>
+            )}
 
             {/* Legend / Status Overlay */}
             <div className="absolute top-4 left-4 p-2.5 rounded-xl bg-white/90 dark:bg-[#121212]/90 backdrop-blur-md border border-neutral-200 dark:border-neutral-800 text-xs space-y-1.5 shadow-sm">

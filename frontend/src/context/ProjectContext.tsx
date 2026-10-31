@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { Project } from '../types';
 import { projectService } from '../services/project-service';
 
@@ -17,6 +18,7 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isSignedIn } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     return localStorage.getItem(ACTIVE_PROJECT_KEY) || '';
@@ -29,7 +31,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const list = await projectService.getProjects();
       setProjects(list);
 
-      // If activeProjectId isn't set or not in list, default to first project
       if (list.length > 0) {
         const found = list.find((p) => p.id === activeProjectId);
         if (!found) {
@@ -37,6 +38,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setActiveProjectId(firstId);
           localStorage.setItem(ACTIVE_PROJECT_KEY, firstId);
         }
+      } else {
+        setActiveProjectId('');
+        localStorage.removeItem(ACTIVE_PROJECT_KEY);
       }
     } catch (err) {
       console.warn('Failed to load projects:', err);
@@ -47,7 +51,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     refreshProjects();
-  }, []);
+  }, [isSignedIn]);
 
   const selectProject = useCallback((id: string) => {
     setActiveProjectId(id);
