@@ -4,7 +4,6 @@ import { LandingPage } from '../pages/landing/LandingPage';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { OverviewPage } from '../features/overview/OverviewPage';
 import { LogExplorerPage } from '../features/log-explorer/LogExplorerPage';
-import { LogClustersPage } from '../features/log-clusters/LogClustersPage';
 import { AnomaliesPage } from '../features/anomalies/AnomaliesPage';
 import { IncidentsPage } from '../features/incidents/IncidentsPage';
 import { IncidentDetailPage } from '../features/incidents/IncidentDetailPage';
@@ -42,7 +41,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'clusters',
-        element: <LogClustersPage />,
+        element: <Navigate to="/dashboard/anomalies" replace />,
       },
       {
         path: 'anomalies',

@@ -499,8 +499,8 @@ export const LandingPage: React.FC = () => {
                       <h3 className="font-semibold text-sm">Log Template Clusters</h3>
                       <p className="text-xs text-neutral-500">Top anomalous patterns</p>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/clusters')}>
-                      Clusters
+                    <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/anomalies')}>
+                      Anomalies
                     </Button>
                   </div>
 
