@@ -34,6 +34,7 @@ import { Incident, IncidentStatus, LogEntry } from '../../types';
 import { incidentService } from '../../services/incident-service';
 import { logService } from '../../services/log-service';
 import { useProject } from '../../context/ProjectContext';
+import { normalizeLogTemplate } from '../../utils/template-normalizer';
 
 const TRANSLATION_REFERENCE = [
   { technical: 'Statistical frequency spike', plain: 'Errors occurred much more frequently than usual' },
@@ -187,21 +188,21 @@ export const IncidentDetailPage: React.FC = () => {
     report?.metrics?.candidateCount ??
     Math.max(incident.rootCauseCandidates.length, 2);
 
-  // User-friendly display title
-  const displayTitle =
-    report?.friendlyTitle ||
-    (incident.title.startsWith('Incident:') ? incident.title.replace(/^Incident:\s*/i, '') : incident.title);
-
-  // Dynamic plain-English fallbacks when AI report isn't pre-computed
+  // Raw technical Drain3 template preserved
   const cleanTemplate = incident.suspectedRootCauseTemplate || topCandidate?.template || '';
 
-  const defaultWhatHappened = cleanTemplate
-    ? `An unexpected surge in '${cleanTemplate.slice(0, 60)}' log events was detected (${totalMatchingErrors} occurrences vs normal baseline). Related errors appeared during the same investigation window.`
-    : 'An unexpected surge in application error patterns was detected during the monitoring window.';
+  // Derive human-readable normalized title and short description via rule normalizer
+  const normalizedInfo = normalizeLogTemplate(cleanTemplate, incident.title);
+  const displayTitle = normalizedInfo.isMatched
+    ? normalizedInfo.displayTitle
+    : (incident.displayTitle || report?.friendlyTitle || normalizedInfo.displayTitle);
+  const shortDescription = normalizedInfo.isMatched
+    ? normalizedInfo.shortDescription
+    : (incident.shortDescription || normalizedInfo.shortDescription);
 
-  const defaultWhatMightBeCausingIt = cleanTemplate
-    ? `Our analysis suggests that issues related to '${cleanTemplate.slice(0, 50)}' could be the main source of the problem.`
-    : 'Our analysis suggests that upstream resource saturation or communication disruptions could be the main source of the problem.';
+  const defaultWhatHappened = `A sudden increase in ${displayTitle.toLowerCase()} was detected (${totalMatchingErrors} occurrences). Multiple related log patterns and connection failures appeared during the same investigation window.`;
+
+  const defaultWhatMightBeCausingIt = `Our analysis suggests that ${displayTitle.toLowerCase()} could be the main source of the problem.`;
 
   const defaultWhyBullets = [
     'This error pattern appeared before other abnormal patterns in the timeline.',
@@ -331,6 +332,9 @@ export const IncidentDetailPage: React.FC = () => {
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
               {displayTitle}
             </h1>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+              {shortDescription}
+            </p>
           </div>
 
           {/* Status & Action Buttons */}
@@ -755,9 +759,18 @@ export const IncidentDetailPage: React.FC = () => {
                                 Rank #{candidate.rank || idx + 1}
                               </span>
                             </div>
-                            <p className="font-mono text-xs font-semibold text-neutral-900 dark:text-neutral-100 break-words">
-                              {candidate.template}
+                            <h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                              {candidate.displayTitle || normalizeLogTemplate(candidate.template).displayTitle}
+                            </h4>
+                            <p className="text-xs text-neutral-500">
+                              {candidate.shortDescription || normalizeLogTemplate(candidate.template).shortDescription}
                             </p>
+                            <div className="mt-1.5 p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-[11px] font-mono text-neutral-700 dark:text-neutral-300 break-words">
+                              <span className="text-[10px] text-neutral-400 uppercase font-sans font-bold block mb-0.5">
+                                Technical Drain3 Template:
+                              </span>
+                              {candidate.template}
+                            </div>
                           </div>
                         </div>
 

@@ -8,6 +8,8 @@ from collections import defaultdict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from intelligence.template_normalizer import normalize_template
+
 logger = logging.getLogger("logsense.anomaly")
 
 MIN_SPIKE_COUNT = 3
@@ -257,6 +259,8 @@ def detect_and_evaluate_anomalies(
                     f"against a 5-minute baseline mean of {b_mean:.1f} (std dev: {b_std:.2f}, threshold: {threshold:.1f})."
                 )
                 evidence = {
+                    "displayTitle": f"Overall Error Surge ({current_error_count} errs/min)",
+                    "shortDescription": f"Application experienced an overall error surge of {current_error_count} errors/min against baseline.",
                     "baseline": {
                         "windowMinutes": 5,
                         "counts": baseline_counts,
@@ -422,9 +426,12 @@ def detect_and_evaluate_anomalies(
                     f"Total Score: {total_pattern_points}/17."
                 )
 
+                norm = normalize_template(template)
                 evidence = {
                     "clusterId": cid,
                     "template": template,
+                    "displayTitle": norm["displayTitle"],
+                    "shortDescription": norm["shortDescription"],
                     "firstMinute": first_minute.isoformat(),
                     "firstMinuteCount": first_min_count,
                     "dominantLevel": dominant_lvl,
@@ -499,9 +506,12 @@ def detect_and_evaluate_anomalies(
                         f"of {curr_count} occurrences/min (baseline mean: {b_mean:.1f}, std dev: {b_std:.2f}, threshold: {threshold:.1f}, Z-score: {z_score:.2f})."
                     )
 
+                    norm = normalize_template(template)
                     evidence = {
                         "clusterId": cid,
                         "template": template,
+                        "displayTitle": norm["displayTitle"],
+                        "shortDescription": norm["shortDescription"],
                         "baseline": {
                             "windowMinutes": 5,
                             "counts": baseline_counts,

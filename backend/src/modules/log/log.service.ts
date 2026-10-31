@@ -284,9 +284,11 @@ export class LogService {
     const logFile = path.resolve(logDir, "worker.log");
     const outFd = fs.openSync(logFile, "a");
 
+    // In Windows libuv, detached: true adds CREATE_NEW_CONSOLE which opens a terminal window popup.
+    // Setting detached: false with windowsHide: true ensures the background worker runs completely invisible.
     const child = spawn(pythonBin, args, {
       stdio: ["ignore", outFd, outFd],
-      detached: true,
+      detached: false,
       windowsHide: true,
     });
 

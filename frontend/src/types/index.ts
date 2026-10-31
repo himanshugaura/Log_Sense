@@ -90,6 +90,8 @@ export interface Anomaly {
   id: string;
   timestamp: string;
   title: string;
+  displayTitle?: string;
+  shortDescription?: string;
   type: string;
   severity: SeverityLevel;
   observedValue: number | string;
@@ -120,6 +122,8 @@ export type IncidentStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED';
 export interface RootCauseCandidate {
   clusterId?: string;
   template?: string;
+  displayTitle?: string;
+  shortDescription?: string;
   service?: string;
   totalScore?: number; // 0 - 15 points
   temporalPoints?: number; // 0 - 4
@@ -193,6 +197,8 @@ export interface StructuredIncidentReport {
 export interface Incident {
   id: string;
   title: string;
+  displayTitle?: string;
+  shortDescription?: string;
   severity: SeverityLevel;
   status: IncidentStatus;
   suspectedRootCauseTemplate?: string;

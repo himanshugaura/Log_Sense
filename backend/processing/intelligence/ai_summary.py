@@ -8,27 +8,16 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 import httpx
 
+from intelligence.template_normalizer import normalize_template
+
 logger = logging.getLogger("logsense.summary")
 
 def get_friendly_category_and_title(template: str) -> tuple[str, str]:
     """
     Translates raw log signatures into user-friendly incident titles.
     """
-    t_lower = (template or "").lower()
-    if any(k in t_lower for k in ["hikaripool", "connection pool", "pool exhausted", "borrowobject"]):
-        return "Database Connection Pool", "Possible database connection pool problem"
-    elif any(k in t_lower for k in ["connection broken", "broken pipe", "closed socket", "socket closed", "connection refused", "connection reset"]):
-        return "Network Connectivity", "Possible network or database connectivity problem"
-    elif any(k in t_lower for k in ["interrupting sendworker", "interrupted while waiting", "leaving thread", "worker thread"]):
-        return "Background Task Worker", "Possible background task worker interruption"
-    elif any(k in t_lower for k in ["session", "timed out", "timeout", "expiring session", "notification time out"]):
-        return "Session & Heartbeat", "Possible session timeout or connection interruption"
-    elif any(k in t_lower for k in ["ioexception", "file not found", "disk full"]):
-        return "File System & Storage", "Possible disk or storage communication error"
-    elif any(k in t_lower for k in ["outofmemory", "oom", "heap space"]):
-        return "System Resources", "Possible memory exhaustion or high resource pressure"
-    else:
-        return "Application Service", "Possible application service error spike"
+    norm = normalize_template(template)
+    return norm["category"], norm["displayTitle"]
 
 def explain_technical_log_pattern(template: str) -> dict:
     """

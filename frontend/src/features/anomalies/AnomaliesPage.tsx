@@ -29,6 +29,7 @@ import { Anomaly, SeverityLevel } from '../../types';
 import { anomalyService } from '../../services/anomaly-service';
 import { useTheme } from '../../context/ThemeContext';
 import { useProject } from '../../context/ProjectContext';
+import { normalizeLogTemplate } from '../../utils/template-normalizer';
 
 export const AnomaliesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -215,12 +216,16 @@ export const AnomaliesPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                    {anom.title}
+                  <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+                    {anom.displayTitle || normalizeLogTemplate(anom.clusterTemplate || anom.title).displayTitle}
                   </h3>
 
-                  <p className="text-[11px] text-neutral-500 mt-1 line-clamp-1 font-mono">
-                    {anom.clusterTemplate || anom.description}
+                  <p className="text-[11px] text-neutral-500 mt-0.5 line-clamp-1">
+                    {anom.shortDescription || normalizeLogTemplate(anom.clusterTemplate || anom.title).shortDescription}
+                  </p>
+
+                  <p className="text-[10px] text-neutral-400 font-mono mt-1 line-clamp-1 truncate bg-neutral-100 dark:bg-neutral-850 px-1.5 py-0.5 rounded">
+                    Drain3: {anom.clusterTemplate || anom.title}
                   </p>
 
                   <div className="mt-3 pt-2.5 border-t border-neutral-100 dark:border-neutral-850 flex items-center justify-between text-[11px]">
@@ -271,8 +276,11 @@ export const AnomaliesPage: React.FC = () => {
                     </span>
                   </div>
                   <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                    {activeAnomaly.title}
+                    {activeAnomaly.displayTitle || normalizeLogTemplate(activeAnomaly.clusterTemplate || activeAnomaly.title).displayTitle}
                   </h2>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    {activeAnomaly.shortDescription || normalizeLogTemplate(activeAnomaly.clusterTemplate || activeAnomaly.title).shortDescription}
+                  </p>
                 </div>
 
                 {activeAnomaly.relatedIncidentId && (

@@ -323,8 +323,13 @@ export const OverviewPage: React.FC = () => {
                 </span>
               </div>
               <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                {primaryIncident.title}
+                {primaryIncident.displayTitle || primaryIncident.title}
               </h2>
+              {primaryIncident.shortDescription && (
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  {primaryIncident.shortDescription}
+                </p>
+              )}
             </div>
 
             <Button
@@ -355,12 +360,18 @@ export const OverviewPage: React.FC = () => {
                 <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide block">
                   Rank #1 Initiating Log Pattern
                 </span>
-                <p className="font-mono text-xs font-bold text-amber-700 dark:text-amber-400 break-words">
+                <h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                  {topCandidate.displayTitle || topCandidate.template}
+                </h4>
+                <p className="text-xs text-neutral-500">
+                  {topCandidate.shortDescription || topCandidate.explanation}
+                </p>
+                <div className="mt-1.5 p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-[10px] font-mono text-neutral-600 dark:text-neutral-300 break-words">
+                  <span className="text-[9px] text-neutral-400 uppercase font-sans font-bold block mb-0.5">
+                    Technical Drain3 Template:
+                  </span>
                   {topCandidate.template}
-                </p>
-                <p className="text-[11px] text-neutral-500 font-mono">
-                  {topCandidate.explanation}
-                </p>
+                </div>
               </div>
 
               <div className="text-right shrink-0">

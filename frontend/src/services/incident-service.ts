@@ -1,5 +1,6 @@
 import { Incident, IncidentStatus, SeverityLevel } from '../types';
 import { apiClient } from './api/client';
+import { normalizeLogTemplate } from '../utils/template-normalizer';
 
 export interface IncidentFilterOptions {
   severity?: string;
@@ -44,16 +45,24 @@ export const incidentService = {
             structuredReport = rawRecs;
           }
 
+          const suspectedTemplate =
+            topCandidate?.template ||
+            topCandidate?.cluster?.template ||
+            item.rcaAnalyses?.[0]?.conclusion ||
+            '';
+          const norm = normalizeLogTemplate(suspectedTemplate, item.title);
+          const displayTitle = norm.isMatched
+            ? norm.displayTitle
+            : (structuredReport?.friendlyTitle || norm.displayTitle);
+
           return {
             id: item.id,
             title: item.title,
+            displayTitle,
+            shortDescription: norm.shortDescription,
             severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
             status: item.status as IncidentStatus,
-            suspectedRootCauseTemplate:
-              topCandidate?.template ||
-              topCandidate?.cluster?.template ||
-              item.rcaAnalyses?.[0]?.conclusion ||
-              'Evaluating pattern',
+            suspectedRootCauseTemplate: suspectedTemplate || 'Evaluating pattern',
             firstDetected: new Date(item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
             lastUpdated: new Date(item.updatedAt || item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
             aiSummary:
@@ -61,18 +70,24 @@ export const incidentService = {
               summary?.summaryText ||
               'Point-based log pattern RCA in progress.',
             structuredReport,
-            rootCauseCandidates: candidates.map((c: any) => ({
-              clusterId: c.clusterId || c.cluster?.id,
-              template: c.template || c.cluster?.template || 'Unknown Pattern',
-              totalScore: c.totalScore,
-              temporalPoints: c.temporalPoints || 0,
-              frequencyPoints: c.frequencyPoints || 0,
-              classificationPoints: c.classificationPoints || 0,
-              relationshipPoints: c.relationshipPoints || 0,
-              explanation: c.explanation || `Scored ${c.totalScore}/15 pts in multi-signal statistical analysis.`,
-              rank: c.rank,
-              evidence: c.evidence,
-            })),
+            rootCauseCandidates: candidates.map((c: any) => {
+              const rawTmpl = c.template || c.cluster?.template || 'Unknown Pattern';
+              const candNorm = normalizeLogTemplate(rawTmpl);
+              return {
+                clusterId: c.clusterId || c.cluster?.id,
+                template: rawTmpl,
+                displayTitle: candNorm.displayTitle,
+                shortDescription: candNorm.shortDescription,
+                totalScore: c.totalScore,
+                temporalPoints: c.temporalPoints || 0,
+                frequencyPoints: c.frequencyPoints || 0,
+                classificationPoints: c.classificationPoints || 0,
+                relationshipPoints: c.relationshipPoints || 0,
+                explanation: c.explanation || `Scored ${c.totalScore}/15 pts in multi-signal statistical analysis.`,
+                rank: c.rank,
+                evidence: c.evidence,
+              };
+            }),
             correlatedTimeline: (item.incidentAnomalies || []).map((ia: any, idx: number) => ({
               id: `tl-${idx}`,
               time: new Date(ia.anomaly?.firstDetectedAt || item.startedAt).toISOString().slice(11, 19) + ' UTC',
@@ -112,16 +127,24 @@ export const incidentService = {
           structuredReport = rawRecs;
         }
 
+        const suspectedTemplate =
+          topCandidate?.template ||
+          topCandidate?.cluster?.template ||
+          item.rcaAnalyses?.[0]?.conclusion ||
+          '';
+        const norm = normalizeLogTemplate(suspectedTemplate, item.title);
+        const displayTitle = norm.isMatched
+          ? norm.displayTitle
+          : (structuredReport?.friendlyTitle || norm.displayTitle);
+
         return {
           id: item.id,
           title: item.title,
+          displayTitle,
+          shortDescription: norm.shortDescription,
           severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
           status: item.status as IncidentStatus,
-          suspectedRootCauseTemplate:
-            topCandidate?.template ||
-            topCandidate?.cluster?.template ||
-            item.rcaAnalyses?.[0]?.conclusion ||
-            'Evaluating pattern',
+          suspectedRootCauseTemplate: suspectedTemplate || 'Evaluating pattern',
           firstDetected: new Date(item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
           lastUpdated: new Date(item.updatedAt || item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
           aiSummary:
@@ -129,18 +152,24 @@ export const incidentService = {
             summary?.summaryText ||
             'Point-based log pattern RCA in progress.',
           structuredReport,
-          rootCauseCandidates: candidates.map((c: any) => ({
-            clusterId: c.clusterId || c.cluster?.id,
-            template: c.template || c.cluster?.template || 'Unknown Pattern',
-            totalScore: c.totalScore,
-            temporalPoints: c.temporalPoints || 0,
-            frequencyPoints: c.frequencyPoints || 0,
-            classificationPoints: c.classificationPoints || 0,
-            relationshipPoints: c.relationshipPoints || 0,
-            explanation: c.explanation || `Scored ${c.totalScore}/15 pts.`,
-            rank: c.rank,
-            evidence: c.evidence,
-          })),
+          rootCauseCandidates: candidates.map((c: any) => {
+            const rawTmpl = c.template || c.cluster?.template || 'Unknown Pattern';
+            const candNorm = normalizeLogTemplate(rawTmpl);
+            return {
+              clusterId: c.clusterId || c.cluster?.id,
+              template: rawTmpl,
+              displayTitle: candNorm.displayTitle,
+              shortDescription: candNorm.shortDescription,
+              totalScore: c.totalScore,
+              temporalPoints: c.temporalPoints || 0,
+              frequencyPoints: c.frequencyPoints || 0,
+              classificationPoints: c.classificationPoints || 0,
+              relationshipPoints: c.relationshipPoints || 0,
+              explanation: c.explanation || `Scored ${c.totalScore}/15 pts.`,
+              rank: c.rank,
+              evidence: c.evidence,
+            };
+          }),
           correlatedTimeline: (item.incidentAnomalies || []).map((ia: any, idx: number) => ({
             id: `tl-${idx}`,
             time: new Date(ia.anomaly?.firstDetectedAt || item.startedAt).toISOString().slice(11, 19) + ' UTC',

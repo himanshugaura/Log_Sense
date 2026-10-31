@@ -5,6 +5,7 @@ from typing import Dict, List, Set, Any
 from collections import defaultdict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from intelligence.template_normalizer import normalize_template
 
 logger = logging.getLogger("logsense.correlation")
 
@@ -175,15 +176,9 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
 
         else:
             new_inc_id = str(uuid.uuid4())
-            clean_snippet = a_template[:65].strip()
-            if a_type == "NEW_PATTERN":
-                inc_title = f"Incident: New Pattern Emergence '{clean_snippet}'"
-            elif a_type == "SPIKE":
-                inc_title = f"Incident: Critical Spike in '{clean_snippet}'"
-            else:
-                inc_title = f"Incident: {a_sev} Telemetry Disturbance"
-
-            inc_desc = f"Correlated incident initialized by {a_title} at {a_time.strftime('%Y-%m-%d %H:%M:%S UTC')}."
+            norm_meta = normalize_template(a_template)
+            inc_title = norm_meta["displayTitle"]
+            inc_desc = norm_meta["shortDescription"]
 
             new_incidents_to_insert.append({
                 "id": new_inc_id,

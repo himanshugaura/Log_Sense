@@ -1,5 +1,6 @@
 import { Anomaly, SeverityLevel } from '../types';
 import { apiClient } from './api/client';
+import { normalizeLogTemplate } from '../utils/template-normalizer';
 
 export interface AnomalyFilterOptions {
   severity?: string;
@@ -63,20 +64,24 @@ export const anomalyService = {
           const zScore = ev.detection?.zScore;
           const points = ev.scoring?.totalPoints ?? ev.scoring?.spikePoints;
           const affected = ev.affectedClusters || [];
+          const rawTemplate = item.cluster?.template || ev.template || '';
+          const norm = normalizeLogTemplate(rawTemplate, item.title);
 
           return {
             id: item.id,
             timestamp: new Date(item.firstDetectedAt).toISOString().slice(0, 19).replace('T', ' '),
             title: item.title,
+            displayTitle: ev.displayTitle || norm.displayTitle,
+            shortDescription: ev.shortDescription || norm.shortDescription,
             type: item.anomalyType,
             severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
             observedValue: currCount,
             expectedBaseline: bMean,
             unit: 'logs/min',
             clusterId: item.cluster?.id || ev.clusterId,
-            clusterTemplate: item.cluster?.template || ev.template,
+            clusterTemplate: rawTemplate,
             relatedIncidentId: item.incidentAnomalies?.[0]?.incident?.id,
-            description: item.description || item.cluster?.template || 'Statistical anomaly detected.',
+            description: item.description || rawTemplate || norm.shortDescription,
             points,
             zScore,
             evidence: ev,
@@ -105,20 +110,24 @@ export const anomalyService = {
         const ev = item.evidence || {};
         const bMean = ev.baseline?.mean ?? 0;
         const currCount = ev.currentWindow?.count ?? item.occurrenceCount ?? 1;
+        const rawTemplate = item.cluster?.template || ev.template || '';
+        const norm = normalizeLogTemplate(rawTemplate, item.title);
 
         return {
           id: item.id,
           timestamp: new Date(item.firstDetectedAt).toISOString().slice(0, 19).replace('T', ' '),
           title: item.title,
+          displayTitle: ev.displayTitle || norm.displayTitle,
+          shortDescription: ev.shortDescription || norm.shortDescription,
           type: item.anomalyType,
           severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
           observedValue: currCount,
           expectedBaseline: bMean,
           unit: 'logs/min',
           clusterId: item.cluster?.id || ev.clusterId,
-          clusterTemplate: item.cluster?.template || ev.template,
+          clusterTemplate: rawTemplate,
           relatedIncidentId: item.incidentAnomalies?.[0]?.incident?.id,
-          description: item.description || item.cluster?.template || '',
+          description: item.description || rawTemplate || norm.shortDescription,
           points: ev.scoring?.totalPoints ?? ev.scoring?.spikePoints,
           zScore: ev.detection?.zScore,
           evidence: ev,

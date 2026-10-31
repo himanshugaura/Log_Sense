@@ -17,6 +17,7 @@ import { StatusIndicator } from '../../components/ui/Badge';
 import { Incident, IncidentStatus, SeverityLevel } from '../../types';
 import { incidentService } from '../../services/incident-service';
 import { useProject } from '../../context/ProjectContext';
+import { normalizeLogTemplate } from '../../utils/template-normalizer';
 
 export const IncidentsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -161,9 +162,14 @@ export const IncidentsPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                    {inc.title}
-                  </h2>
+                  <div>
+                    <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                      {inc.displayTitle || normalizeLogTemplate(inc.suspectedRootCauseTemplate || inc.title).displayTitle}
+                    </h2>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">
+                      {inc.shortDescription || normalizeLogTemplate(inc.suspectedRootCauseTemplate || inc.title).shortDescription}
+                    </p>
+                  </div>
 
                   <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 max-w-4xl leading-relaxed">
                     {inc.aiSummary}
