@@ -23,6 +23,9 @@ const envSchema = z.object({
   // Python Processing Service URL
   PROCESSING_SERVICE_URL: z.string().default("http://localhost:8000"),
 
+  // CORS Settings for Deployment
+  CORS_ORIGIN: z.string().default("*"),
+
   JWT_ACCESS_SECRET: z.string().default("dev_jwt_access_secret"),
   JWT_ACCESS_EXPIRES_IN: z.string().default("1d"),
   JWT_REFRESH_SECRET: z.string().default("dev_jwt_refresh_secret"),

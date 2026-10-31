@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from parsers.processor import process_uploaded_log_source
@@ -14,6 +15,14 @@ app = FastAPI(
     title="LogSense Processing API",
     description="Python FastAPI service for log stream processing, Drain3 clustering, and intelligence.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 class ProcessLogRequest(BaseModel):
