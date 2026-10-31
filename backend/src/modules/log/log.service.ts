@@ -197,8 +197,8 @@ export class LogService {
       where.serviceId = query.serviceId;
     }
 
-    const page = query.page || 1;
-    const limit = query.limit || 20;
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Number(query.limit) || 20);
     const skip = (page - 1) * limit;
 
     const [total, items] = await Promise.all([
@@ -299,8 +299,8 @@ export class LogService {
       where.template = { contains: query.search.trim(), mode: "insensitive" };
     }
 
-    const page = query.page || 1;
-    const limit = query.limit || 50;
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Number(query.limit) || 50);
     const skip = (page - 1) * limit;
 
     const [total, items] = await Promise.all([
@@ -426,8 +426,8 @@ export class LogService {
       ];
     }
 
-    const page = query.page || 1;
-    const limit = query.limit || 50;
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Number(query.limit) || 50);
     const skip = (page - 1) * limit;
 
     const [total, items] = await Promise.all([
@@ -473,8 +473,8 @@ export class LogService {
       where.status = query.status;
     }
 
-    const page = query.page || 1;
-    const limit = query.limit || 20;
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Number(query.limit) || 20);
     const skip = (page - 1) * limit;
 
     const [total, items] = await Promise.all([

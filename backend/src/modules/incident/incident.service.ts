@@ -33,8 +33,8 @@ export class IncidentService {
     if (query.severity) where.severity = query.severity;
     if (query.status) where.status = query.status;
 
-    const page = query.page || 1;
-    const limit = query.limit || 20;
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Number(query.limit) || 20);
     const skip = (page - 1) * limit;
 
     const [total, items] = await Promise.all([

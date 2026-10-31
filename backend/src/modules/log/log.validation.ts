@@ -15,8 +15,12 @@ export const clusterIdParamSchema = z.object({
 });
 
 export const uploadLogBodySchema = z.object({
-  serviceId: z.string().uuid("Invalid service ID format").optional().or(z.literal("")),
-  sourceType: z.enum(["FILE_UPLOAD", "API", "OTEL"]).default("FILE_UPLOAD").optional(),
+  serviceId: z.string().uuid("Invalid service ID format").optional().or(z.literal("")).nullable(),
+  sourceType: z
+    .enum(["FILE_UPLOAD", "FILE", "API", "OTEL"])
+    .transform((val) => (val === "FILE" ? "FILE_UPLOAD" : val))
+    .default("FILE_UPLOAD")
+    .optional(),
 });
 
 export const listLogSourcesQuerySchema = z.object({

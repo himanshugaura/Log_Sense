@@ -189,9 +189,9 @@ export const logService = {
   async uploadLogFile(projectId: string, file: File, serviceId?: string): Promise<UploadLogResponse> {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('sourceType', 'FILE');
-    if (serviceId && serviceId !== 'all') {
-      formData.append('serviceId', serviceId);
+    formData.append('sourceType', 'FILE_UPLOAD');
+    if (serviceId && serviceId !== 'all' && serviceId.trim() !== '') {
+      formData.append('serviceId', serviceId.trim());
     }
 
     const res = await apiClient.uploadFile<UploadLogResponse>(
