@@ -40,7 +40,8 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
   // Always reset to a fresh idle upload state whenever modal opens
   useEffect(() => {
     if (isOpen) {
-      if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+      if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
+      pollingTimerRef.current = null;
       setUploadFile(null);
       setUploadState('idle');
       setUploadError(null);
@@ -53,7 +54,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
 
   useEffect(() => {
     return () => {
-      if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+      if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
     };
   }, []);
 
@@ -89,26 +90,51 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
       const jobId = res.processingJob?.id;
 
       if (jobId) {
-        pollingTimerRef.current = setInterval(async () => {
+        let attempts = 0;
+        const maxAttempts = 50; // 50 * 2.5s = ~125 seconds
+
+        const pollJobStatus = async () => {
+          if (pollingTimerRef.current === null) return;
           try {
             const jobs = await logService.getProcessingJobs(projectId);
             const current = jobs.find((j) => j.id === jobId);
+
             if (current) {
               setActiveJob(current);
+
               if (current.status === 'COMPLETED') {
-                if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+                if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
+                pollingTimerRef.current = null;
                 setUploadState('success');
                 onSuccess?.();
+                return;
               } else if (current.status === 'FAILED') {
-                if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+                if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
+                pollingTimerRef.current = null;
                 setUploadState('error');
                 setUploadError(current.errorMessage || 'Log parsing and statistical analysis failed');
+                return;
               }
             }
           } catch (err) {
-            console.warn('Job polling error:', err);
+            console.warn('Job polling warning:', err);
           }
-        }, 1200);
+
+          attempts += 1;
+          if (attempts >= maxAttempts) {
+            if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+            setUploadState('error');
+            setUploadError('Processing timed out. Please check backend logs or explore parsed records.');
+            return;
+          }
+
+          // Schedule next check only AFTER the previous request finished
+          pollingTimerRef.current = setTimeout(pollJobStatus, 2500);
+        };
+
+        // First check after 1500ms
+        pollingTimerRef.current = setTimeout(pollJobStatus, 1500);
       } else {
         setUploadState('success');
         onSuccess?.();
@@ -120,7 +146,10 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
   };
 
   const handleResetAndClose = () => {
-    if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+    if (pollingTimerRef.current) {
+      clearTimeout(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
     setUploadFile(null);
     setUploadState('idle');
     setUploadError(null);

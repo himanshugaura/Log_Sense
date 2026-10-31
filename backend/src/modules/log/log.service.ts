@@ -1,4 +1,7 @@
 import { StatusCodes } from "http-status-codes";
+import { spawn } from "child_process";
+import path from "path";
+import fs from "fs";
 
 import { env } from "../../core/config/env.js";
 import { logger } from "../../core/config/logger.js";
@@ -121,7 +124,9 @@ export class LogService {
   }
 
   /**
-   * Asynchronously calls Python FastAPI service to begin parsing, clustering, and anomaly detection
+   * Asynchronously triggers Python log parsing, Drain3 clustering, and statistical RCA.
+   * If the HTTP service on port 8000 is not reachable, seamlessly falls back to spawning
+   * the local CLI worker so ingestion never hangs.
    */
   private async triggerProcessingJob(payload: {
     jobId: string;
@@ -135,7 +140,7 @@ export class LogService {
       logger.info(`Dispatching processing request to Python service: ${processingEndpoint}`);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
 
       const response = await fetch(processingEndpoint, {
         method: "POST",
@@ -150,13 +155,94 @@ export class LogService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.warn(`Python processing service responded with status ${response.status}: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       } else {
-        logger.info(`Python processing job successfully accepted: ${payload.jobId}`);
+        logger.info(`Python processing job successfully accepted via HTTP: ${payload.jobId}`);
       }
     } catch (error: any) {
-      logger.warn(`Could not reach Python processing service (${processingEndpoint}): ${error.message}`);
+      logger.warn(
+        `Python HTTP service unreachable (${processingEndpoint}): ${error.message}. Spawning local CLI worker fallback...`
+      );
+
+      try {
+        await this.spawnPythonWorkerFallback(payload);
+      } catch (spawnErr: any) {
+        logger.error(`Failed to spawn Python CLI worker: ${spawnErr.message}`);
+        await prisma.processingJob
+          .update({
+            where: { id: payload.jobId },
+            data: {
+              status: "FAILED",
+              errorMessage: `Processing service offline and CLI fallback failed: ${spawnErr.message}`,
+              completedAt: new Date(),
+            },
+          })
+          .catch(() => {});
+      }
     }
+  }
+
+  /**
+   * Spawns backend/processing/run_job.py directly using the virtualenv python binary
+   */
+  private async spawnPythonWorkerFallback(payload: {
+    jobId: string;
+    logSourceId: string;
+    projectId: string;
+    fileKey: string;
+  }): Promise<void> {
+    const isWindows = process.platform === "win32";
+
+    // Candidate paths for virtualenv python
+    const candidates = [
+      path.resolve(process.cwd(), "processing", ".venv", isWindows ? "Scripts/python.exe" : "bin/python"),
+      path.resolve(process.cwd(), "backend", "processing", ".venv", isWindows ? "Scripts/python.exe" : "bin/python"),
+      path.resolve(process.cwd(), "..", "backend", "processing", ".venv", isWindows ? "Scripts/python.exe" : "bin/python"),
+    ];
+
+    let pythonBin = "python";
+    for (const cand of candidates) {
+      if (fs.existsSync(cand)) {
+        pythonBin = cand;
+        break;
+      }
+    }
+
+    const scriptCandidates = [
+      path.resolve(process.cwd(), "processing", "run_job.py"),
+      path.resolve(process.cwd(), "backend", "processing", "run_job.py"),
+      path.resolve(process.cwd(), "..", "backend", "processing", "run_job.py"),
+    ];
+
+    let scriptPath = "";
+    for (const cand of scriptCandidates) {
+      if (fs.existsSync(cand)) {
+        scriptPath = cand;
+        break;
+      }
+    }
+
+    if (!scriptPath) {
+      throw new Error("Could not find run_job.py script in workspace");
+    }
+
+    const args = [
+      scriptPath,
+      "--job-id", payload.jobId,
+      "--source-id", payload.logSourceId,
+      "--project-id", payload.projectId,
+      "--file-key", payload.fileKey,
+    ];
+
+    logger.info(`Spawning background Python worker: ${pythonBin} ${args.join(" ")}`);
+
+    const child = spawn(pythonBin, args, {
+      stdio: "inherit",
+      detached: true,
+      windowsHide: true,
+    });
+
+    child.unref();
   }
 
   /**
