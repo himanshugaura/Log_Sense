@@ -36,16 +36,6 @@ import { logService } from '../../services/log-service';
 import { useProject } from '../../context/ProjectContext';
 import { normalizeLogTemplate } from '../../utils/template-normalizer';
 
-const TRANSLATION_REFERENCE = [
-  { technical: 'Statistical frequency spike', plain: 'Errors occurred much more frequently than usual' },
-  { technical: 'Temporal precedence', plain: 'This error appeared before the other errors' },
-  { technical: 'Cascading relationship', plain: 'Other errors appeared shortly afterward' },
-  { technical: 'Root cause candidate', plain: 'Possible underlying cause' },
-  { technical: 'Baseline deviation', plain: 'Difference from normal application behaviour' },
-  { technical: 'Z-score > 3.0', plain: 'The error count was significantly outside its usual range' },
-  { technical: 'New Drain3 cluster', plain: 'A previously unseen type of log message was detected' },
-];
-
 const getPatternExplanationFallback = (template: string) => {
   const t = (template || '').toLowerCase();
   if (t.includes('hikaripool') || t.includes('connection pool') || t.includes('pool')) {
@@ -650,34 +640,119 @@ export const IncidentDetailPage: React.FC = () => {
 
         {showTechEvidence && (
           <div className="p-6 border-t border-neutral-200 dark:border-neutral-800 space-y-6">
-            {/* Technical Language Translation Reference */}
+            {/* Real Root Cause Candidates & Point Scoring Table */}
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-neutral-500" />
-                <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider">
-                  Technical Output to User-Friendly Translation Reference
-                </h4>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Binary className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider">
+                    Ranked Root Cause Candidates & 15-Point Multi-Signal Scoring
+                  </h4>
+                </div>
+                <span className="text-[11px] font-mono text-neutral-400">
+                  {incident.rootCauseCandidates.length} Candidates Evaluated
+                </span>
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-neutral-100 dark:bg-neutral-850 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 font-semibold">
-                      <th className="p-3">Technical Output</th>
-                      <th className="p-3">User-Friendly Explanation</th>
+                      <th className="p-3 w-16">Rank</th>
+                      <th className="p-3 min-w-[280px]">Candidate Pattern & Drain3 Template</th>
+                      <th className="p-3 text-center">Total Score</th>
+                      <th className="p-3 text-center">Temporal (≤4)</th>
+                      <th className="p-3 text-center">Frequency (≤4)</th>
+                      <th className="p-3 text-center">Severity (≤3)</th>
+                      <th className="p-3 text-center">Cascade (≤4)</th>
+                      <th className="p-3 min-w-[200px]">Statistical Evidence & Findings</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800 font-sans">
-                    {TRANSLATION_REFERENCE.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-neutral-100/50 dark:hover:bg-neutral-850/40">
-                        <td className="p-3 font-mono font-medium text-neutral-800 dark:text-neutral-200">
-                          {row.technical}
-                        </td>
-                        <td className="p-3 text-neutral-600 dark:text-neutral-400">
-                          {row.plain}
-                        </td>
-                      </tr>
-                    ))}
+                    {incident.rootCauseCandidates.map((candidate, idx) => {
+                      const norm = normalizeLogTemplate(candidate.template);
+                      const displayTitle = candidate.displayTitle || norm.displayTitle;
+                      const isTop = idx === 0;
+
+                      return (
+                        <tr
+                          key={candidate.clusterId || idx}
+                          className={`hover:bg-neutral-100/50 dark:hover:bg-neutral-850/40 transition-colors ${
+                            isTop ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''
+                          }`}
+                        >
+                          <td className="p-3 align-top">
+                            <span
+                              className={`inline-flex items-center justify-center font-bold px-2 py-0.5 rounded text-xs ${
+                                isTop
+                                  ? 'bg-amber-500 text-white font-mono'
+                                  : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-mono'
+                              }`}
+                            >
+                              #{candidate.rank || idx + 1}
+                            </span>
+                            {isTop && (
+                              <span className="block text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-1 uppercase tracking-tight">
+                                Primary
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="p-3 align-top space-y-1.5">
+                            <div className="font-bold text-neutral-900 dark:text-neutral-100 text-xs">
+                              {displayTitle}
+                            </div>
+                            <div className="p-2 rounded bg-neutral-100 dark:bg-neutral-850 font-mono text-[11px] text-neutral-700 dark:text-neutral-300 break-words leading-relaxed border border-neutral-200/60 dark:border-neutral-800/60">
+                              <span className="text-[9px] uppercase font-bold text-neutral-400 block font-sans mb-0.5">
+                                Technical Drain3 Template:
+                              </span>
+                              {candidate.template}
+                            </div>
+                          </td>
+
+                          <td className="p-3 align-top text-center">
+                            <div className="font-mono text-base font-bold text-emerald-600 dark:text-emerald-400">
+                              {candidate.totalScore}
+                            </div>
+                            <span className="text-[10px] text-neutral-400 font-mono">/ 15 pts</span>
+                          </td>
+
+                          <td className="p-3 align-top text-center">
+                            <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">
+                              {candidate.temporalPoints}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 block font-mono">/ 4</span>
+                          </td>
+
+                          <td className="p-3 align-top text-center">
+                            <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">
+                              {candidate.frequencyPoints}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 block font-mono">/ 4</span>
+                          </td>
+
+                          <td className="p-3 align-top text-center">
+                            <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">
+                              {candidate.classificationPoints}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 block font-mono">/ 3</span>
+                          </td>
+
+                          <td className="p-3 align-top text-center">
+                            <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">
+                              {candidate.relationshipPoints}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 block font-mono">/ 4</span>
+                          </td>
+
+                          <td className="p-3 align-top text-neutral-600 dark:text-neutral-400 text-xs space-y-1">
+                            <p className="line-clamp-3 leading-relaxed">
+                              {candidate.explanation}
+                            </p>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
