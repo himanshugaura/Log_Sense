@@ -18,6 +18,26 @@ SEVERITY_ORDER = {
 
 CORRELATION_WINDOW_MINUTES = 5
 
+
+def extract_failure_domains(text_val: str) -> Set[str]:
+    """Extracts high-level failure infrastructure domains to enforce affinity during correlation."""
+    tokens = set()
+    t_lower = text_val.lower()
+    if any(k in t_lower for k in ["postgres", "database", "deadlock", "lock", "table", "hikaripool", "connection pool", "sql", "psql"]):
+        tokens.add("database")
+    if any(k in t_lower for k in ["redis", "cache", "memcached"]):
+        tokens.add("cache")
+    if any(k in t_lower for k in ["ssl", "tls", "handshake", "certificate", "cipher"]):
+        tokens.add("security")
+    if any(k in t_lower for k in ["502", "503", "504", "gateway", "timeout", "timed out", "circuit breaker", "upstream"]):
+        tokens.add("gateway")
+    if any(k in t_lower for k in ["socket", "connection reset", "broken pipe", "connection refused", "network"]):
+        tokens.add("network")
+    if any(k in t_lower for k in ["oom", "out of memory", "heap", "memory limit", "allocation failed", "maxmemory"]):
+        tokens.add("memory")
+    return tokens
+
+
 def correlate_incidents(db: Session, project_id: str) -> List[str]:
     """
     Implements Part 6 of the LogSense Specification:
@@ -93,6 +113,7 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             if t > latest_time:
                 latest_time = t
 
+        norm_inc = normalize_template(inc[4])
         active_incidents.append({
             "id": inc_id,
             "severity": inc[1],
@@ -100,7 +121,10 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             "startedAt": earliest_time,
             "lastEventAt": latest_time,
             "cluster_ids": cluster_ids,
+            "affected_cluster_ids": set(),
             "anomaly_ids": {str(l[1]) for l in linked},
+            "category": norm_inc.get("category", ""),
+            "domains": extract_failure_domains(inc[4]),
         })
 
     affected_incident_ids: Set[str] = set()
@@ -133,7 +157,11 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
 
         matched_incident = None
 
-        # Correlate within 5-minute disturbance window
+        # Correlate within 5-minute disturbance window WITH SIMILARITY REQUIREMENT
+        a_norm = normalize_template(a_template or a_title)
+        a_category = a_norm.get("category", "")
+        a_domains = extract_failure_domains(f"{a_template} {a_title}")
+
         for inc in active_incidents:
             time_delta_to_start = abs((a_time - inc["startedAt"]).total_seconds()) / 60.0
             time_delta_to_latest = abs((a_time - inc["lastEventAt"]).total_seconds()) / 60.0
@@ -148,11 +176,36 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             if time_delta_to_start > 20.0 and not (a_cid and a_cid in inc["cluster_ids"]):
                 continue
 
-            has_cluster_overlap = a_cid and (a_cid in inc["cluster_ids"])
-            has_affected_overlap = bool(a_affected_cids & inc["cluster_ids"])
+            # Strict Similarity & Causal Affinity Checks:
+            # 1. Direct Pattern Identity: same failure cluster re-spiking
+            has_cluster_overlap = bool(a_cid and (a_cid in inc["cluster_ids"]))
 
-            # Common disturbance if in 5-min active window and shares cluster or near contemporaneous
-            if has_cluster_overlap or has_affected_overlap or time_delta_to_latest <= CORRELATION_WINDOW_MINUTES:
+            # 2. Cascading Causal Chain: anomaly cluster was identified as an affected cluster, or vice versa
+            has_affected_overlap = bool(a_affected_cids & inc["cluster_ids"]) or bool(
+                a_cid and (a_cid in inc.get("affected_cluster_ids", set()))
+            )
+
+            # 3. Domain & Category Similarity: both belong to same functional category
+            inc_category = inc.get("category", "")
+            has_category_overlap = bool(a_category and inc_category and a_category == inc_category)
+
+            # 4. Infrastructure Domain Overlap (e.g. database, cache, security, gateway, network, memory)
+            inc_domains = inc.get("domains", set())
+            has_domain_overlap = bool(a_domains & inc_domains)
+
+            # 5. Overall application error surge merges if contemporaneous with this active incident
+            is_overall_surge = (a_type == "SPIKE" and not a_cid)
+
+            is_similar = (
+                has_cluster_overlap
+                or has_affected_overlap
+                or has_category_overlap
+                or has_domain_overlap
+                or is_overall_surge
+            )
+
+            # Merges ONLY if BOTH in the 5-min window AND similar/causally linked!
+            if is_similar and time_delta_to_latest <= CORRELATION_WINDOW_MINUTES:
                 matched_incident = inc
                 break
 
@@ -174,6 +227,8 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             if a_cid:
                 matched_incident["cluster_ids"].add(a_cid)
             matched_incident["cluster_ids"].update(a_affected_cids)
+            matched_incident.setdefault("affected_cluster_ids", set()).update(a_affected_cids)
+            matched_incident.setdefault("domains", set()).update(a_domains)
             matched_incident["anomaly_ids"].add(a_id)
 
             if a_time > matched_incident["lastEventAt"]:
@@ -193,6 +248,7 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             norm_meta = normalize_template(a_template)
             inc_title = norm_meta["displayTitle"]
             inc_desc = norm_meta["shortDescription"]
+            new_domains = extract_failure_domains(f"{a_template} {a_title}")
 
             new_incidents_to_insert.append({
                 "id": new_inc_id,
@@ -217,7 +273,10 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
                 "startedAt": a_time,
                 "lastEventAt": a_time,
                 "cluster_ids": {a_cid} if a_cid else set(),
+                "affected_cluster_ids": a_affected_cids.copy(),
                 "anomaly_ids": {a_id},
+                "category": norm_meta.get("category", ""),
+                "domains": new_domains,
             })
 
             affected_incident_ids.add(new_inc_id)
