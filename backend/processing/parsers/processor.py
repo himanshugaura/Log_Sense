@@ -231,9 +231,9 @@ class LogProcessor:
                 # Step B: Incident Correlation
                 incident_ids = correlate_incidents(self.db, self.project_id)
 
-                # Step C: Point-based RCA Engine (ranking log patterns on top primary incidents)
+                # Step C: Point-based RCA Engine (ranking log patterns on correlated incidents)
                 rca = RcaEngine(self.db)
-                for inc_id in incident_ids[:2]:
+                for inc_id in incident_ids[:10]:
                     rca_res = rca.analyze_incident(inc_id)
                     if rca_res:
                         rca_results[inc_id] = rca_res
@@ -260,7 +260,7 @@ class LogProcessor:
                 def run_summaries():
                     try:
                         with get_db() as bg_db:
-                            for inc_id, rca_res in list(rca_results.items())[:2]:
+                            for inc_id, rca_res in list(rca_results.items())[:5]:
                                 try:
                                     generate_incident_summary(bg_db, inc_id, rca_res)
                                 except Exception as e:

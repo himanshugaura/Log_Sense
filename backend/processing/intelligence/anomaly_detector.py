@@ -176,6 +176,7 @@ def detect_and_evaluate_anomalies(
     minute_cluster_counts: Dict[datetime, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     minute_overall_errors: Dict[datetime, int] = defaultdict(int)
     cluster_minute_levels: Dict[Tuple[datetime, str], str] = {}
+    cluster_level_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     cluster_first_timestamps: Dict[str, datetime] = {}
     cluster_sample_service: Dict[str, str] = {}
 
@@ -189,6 +190,7 @@ def detect_and_evaluate_anomalies(
 
         minute_cluster_counts[m_dt][cid] += cnt
         cluster_minute_levels[(m_dt, cid)] = lvl
+        cluster_level_counts[cid][lvl] += cnt
 
         if lvl in ("ERROR", "FATAL", "CRITICAL"):
             minute_overall_errors[m_dt] += cnt
@@ -197,6 +199,40 @@ def detect_and_evaluate_anomalies(
             cluster_first_timestamps[cid] = first_ts
         if svc and cid not in cluster_sample_service:
             cluster_sample_service[cid] = svc
+
+    cluster_dominant_level: Dict[str, str] = {}
+    for cid, lvls in cluster_level_counts.items():
+        if any(l in lvls for l in ("FATAL", "CRITICAL")):
+            cluster_dominant_level[cid] = "CRITICAL"
+        elif any(l in lvls for l in ("ERROR", "ERR")):
+            cluster_dominant_level[cid] = "ERROR"
+        elif any(l in lvls for l in ("WARN", "WARNING")):
+            cluster_dominant_level[cid] = "WARN"
+        else:
+            cluster_dominant_level[cid] = max(lvls.items(), key=lambda x: x[1])[0]
+
+    FAILURE_KEYWORDS = (
+        "exception", "error", "failed", "failure", "timeout", "timed out",
+        "deadlock", "refused", "exhausted", "broken", "fatal", "panic",
+        "crash", "502", "503", "504", "unauthorized", "pool exhausted",
+        "out of memory", "circuit breaker open", "utilization high"
+    )
+
+    BENIGN_WARNING_PATTERNS = (
+        "cache miss", "deprecated", "heartbeat sent"
+    )
+
+    def is_candidate_anomaly_cluster(target_cid: str) -> bool:
+        tmpl = clusters_by_id[target_cid]["template"].lower()
+        dom_lvl = cluster_dominant_level.get(target_cid, "INFO")
+        # Benign routine warnings like cache misses are normal operational behavior
+        if any(b in tmpl for b in BENIGN_WARNING_PATTERNS) and not any(f in tmpl for f in ("crash", "fatal", "deadlock", "exhausted")):
+            return False
+        if dom_lvl in ("ERROR", "FATAL", "CRITICAL"):
+            return True
+        if dom_lvl in ("WARN", "WARNING"):
+            return any(kw in tmpl for kw in FAILURE_KEYWORDS)
+        return any(kw in tmpl for kw in FAILURE_KEYWORDS)
 
     all_minutes = sorted(minute_cluster_counts.keys())
     minute_indices = {m: i for i, m in enumerate(all_minutes)}
@@ -319,6 +355,10 @@ def detect_and_evaluate_anomalies(
         first_seen_ts = cl_meta["firstSeenAt"]
         svc_name = cluster_sample_service.get(cid, "system")
 
+        # Skip benign operational INFO/DEBUG traffic with no failure indicators
+        if not is_candidate_anomaly_cluster(cid):
+            continue
+
         # Find the minute bucket in which this cluster first appeared
         first_minute = min([m for m in all_minutes if minute_cluster_counts[m].get(cid, 0) > 0], default=None)
         if not first_minute:
@@ -326,11 +366,11 @@ def detect_and_evaluate_anomalies(
 
         first_idx = minute_indices[first_minute]
         first_min_count = minute_cluster_counts[first_minute].get(cid, 0)
-        dominant_lvl = cluster_minute_levels.get((first_minute, cid), "INFO")
+        dominant_lvl = cluster_minute_levels.get((first_minute, cid), cluster_dominant_level.get(cid, "INFO"))
 
         # A: Check if this cluster is a Genuinely NEW PATTERN (Section 3)
         # Newly appearing cluster with non-trivial severity or count
-        is_error = dominant_lvl in ("ERROR", "FATAL", "CRITICAL")
+        is_error = dominant_lvl in ("ERROR", "FATAL", "CRITICAL") or any(kw in template.lower() for kw in FAILURE_KEYWORDS)
         is_warn = dominant_lvl in ("WARN", "WARNING")
 
         # Check subsequent windows for recurrence (Section 3 point 6)
@@ -342,11 +382,11 @@ def detect_and_evaluate_anomalies(
 
         recurrence_points = min(2, subsequent_recurrence)
 
-        # B: Check Other Clusters for Impact around this event (Section 4)
+        # B: Check Other Failure Clusters for Impact around this event (Section 4)
         # Inspect [-5 mins, first_minute, +5 mins]
         affected_clusters = []
         for other_cid in all_cluster_ids:
-            if other_cid == cid:
+            if other_cid == cid or not is_candidate_anomaly_cluster(other_cid):
                 continue
             other_meta = clusters_by_id[other_cid]
             other_template = other_meta["template"]
@@ -403,6 +443,8 @@ def detect_and_evaluate_anomalies(
 
         # Calculate Points according to PART 5
         sev_points = calculate_severity_points(dominant_lvl)
+        if dominant_lvl == "INFO" and any(kw in template.lower() for kw in FAILURE_KEYWORDS):
+            sev_points = 3
         occ_points = calculate_occurrence_points(first_min_count)
         total_pattern_points = (
             sev_points
@@ -414,8 +456,8 @@ def detect_and_evaluate_anomalies(
         total_pattern_points = min(17, total_pattern_points)
         classification = classify_score(total_pattern_points)
 
-        # Flag NEW_PATTERN anomaly if points >= 4 or (is_error and first_min_count >= 2)
-        if total_pattern_points >= 4 or (is_error and first_min_count >= 2) or (is_warn and first_min_count >= 5):
+        # Flag NEW_PATTERN anomaly if points >= 4 or (is_error and first_min_count >= 1) or (is_warn and first_min_count >= 3)
+        if total_pattern_points >= 4 or (is_error and first_min_count >= 1) or (is_warn and first_min_count >= 3):
             dedup_key = (cid, "NEW_PATTERN", first_minute)
             if dedup_key not in existing_set:
                 anomaly_id = str(uuid.uuid4())
@@ -485,6 +527,11 @@ def detect_and_evaluate_anomalies(
             if curr_count < MIN_SPIKE_COUNT:
                 continue
 
+            # If this is the cluster's very first minute, it was already evaluated and flagged as NEW_PATTERN.
+            # Do not duplicate it as a SPIKE in the exact same minute.
+            if m_time == first_minute:
+                continue
+
             baseline_counts = get_cluster_5min_baseline(cid, idx)
             b_mean = calculate_mean(baseline_counts)
             b_std = calculate_sample_std_dev(baseline_counts, b_mean)
@@ -492,10 +539,10 @@ def detect_and_evaluate_anomalies(
             spike_detected = False
             if b_mean == 0.0 and b_std == 0.0:
                 spike_detected = curr_count >= MIN_SPIKE_COUNT
-                z_score = float(curr_count)
+                z_score = min(10.0, float(curr_count) / 2.0)
                 threshold = float(MIN_SPIKE_COUNT)
             else:
-                threshold = b_mean + (2.0 * b_std)
+                threshold = b_mean + (2.0 * b_std) if b_std > 0 else (b_mean + 2.0)
                 spike_detected = curr_count > threshold
                 z_score = (curr_count - b_mean) / b_std if b_std > 0 else (curr_count - b_mean)
 

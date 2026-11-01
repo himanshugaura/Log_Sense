@@ -156,6 +156,39 @@ NORMALIZATION_RULES: List[NormalizationRule] = [
         category="Concurrency & Locking",
         short_description="Concurrent operations exceeded lock wait limits, resulting in transaction rollback or cancellation.",
     ),
+    # 13. SSL / TLS Handshake Failure
+    NormalizationRule(
+        id="ssl_handshake_failure",
+        pattern=re.compile(
+            r"(?i)\b(ssl\s+handshake\s+failed|tls\s+handshake|ssl\s+handshake|certificate\s+verify\s+failed)\b",
+            re.DOTALL,
+        ),
+        display_title="SSL/TLS handshake failure",
+        category="Security & Transport",
+        short_description="Encrypted connection negotiation with remote payment provider or API endpoint failed.",
+    ),
+    # 14. Circuit Breaker Tripped / Isolation
+    NormalizationRule(
+        id="circuit_breaker_tripped",
+        pattern=re.compile(
+            r"(?i)\b(circuit\s+breaker\s+open|circuit\s+breaker\s+tripped)\b",
+            re.DOTALL,
+        ),
+        display_title="Circuit breaker tripped",
+        category="Microservice Resilience",
+        short_description="Automated circuit breaker opened after consecutive downstream upstream failure thresholds were reached.",
+    ),
+    # 15. Payment Provider Gateway Failure
+    NormalizationRule(
+        id="payment_gateway_failure",
+        pattern=re.compile(
+            r"(?i)\b(upstream\s+stripe-gateway|payment\s+timeout|downstream\s+payment\s+failure)\b",
+            re.DOTALL,
+        ),
+        display_title="Payment provider gateway failure",
+        category="External Gateway",
+        short_description="External payment gateway failed to respond or returned service unavailable during checkout transactions.",
+    ),
 ]
 
 

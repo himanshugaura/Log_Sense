@@ -107,6 +107,7 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
     new_incidents_to_insert = []
     incident_anomalies_to_insert = []
     severity_updates = {}
+    title_updates = {}
 
     for a in anomalies:
         a_id = str(a[0])
@@ -137,15 +138,21 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
             time_delta_to_start = abs((a_time - inc["startedAt"]).total_seconds()) / 60.0
             time_delta_to_latest = abs((a_time - inc["lastEventAt"]).total_seconds()) / 60.0
 
-            # Incident window boundary check
-            if time_delta_to_latest > CORRELATION_WINDOW_MINUTES and time_delta_to_start > CORRELATION_WINDOW_MINUTES:
+            # If the anomaly occurred more than CORRELATION_WINDOW_MINUTES after the incident's latest event,
+            # this disturbance has cooled down. Do NOT merge!
+            if time_delta_to_latest > CORRELATION_WINDOW_MINUTES:
+                continue
+
+            # Prevent unbounded rolling window: if time from startedAt exceeds 20 minutes,
+            # only merge if there is explicit cluster overlap
+            if time_delta_to_start > 20.0 and not (a_cid and a_cid in inc["cluster_ids"]):
                 continue
 
             has_cluster_overlap = a_cid and (a_cid in inc["cluster_ids"])
             has_affected_overlap = bool(a_affected_cids & inc["cluster_ids"])
 
-            # Common disturbance if in 5-min window and shares cluster or near contemporaneous
-            if has_cluster_overlap or has_affected_overlap or time_delta_to_latest <= 5.0:
+            # Common disturbance if in 5-min active window and shares cluster or near contemporaneous
+            if has_cluster_overlap or has_affected_overlap or time_delta_to_latest <= CORRELATION_WINDOW_MINUTES:
                 matched_incident = inc
                 break
 
@@ -171,6 +178,13 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
 
             if a_time > matched_incident["lastEventAt"]:
                 matched_incident["lastEventAt"] = a_time
+
+            # If the incident title is generic and this anomaly has a specific structural failure template, upgrade title
+            if (matched_incident["title"].startswith("Overall Error Surge") or matched_incident["title"].startswith("System Anomaly")) and a_cid and a_template:
+                norm_m = normalize_template(a_template)
+                if norm_m["isMatched"]:
+                    matched_incident["title"] = norm_m["displayTitle"]
+                    title_updates[inc_id] = (norm_m["displayTitle"], norm_m["shortDescription"])
 
             affected_incident_ids.add(inc_id)
 
@@ -232,6 +246,12 @@ def correlate_incidents(db: Session, project_id: str) -> List[str]:
         db.execute(
             text("UPDATE incidents SET severity = :sev WHERE id = :id"),
             {"sev": sev, "id": inc_id}
+        )
+
+    for inc_id, (t, d) in title_updates.items():
+        db.execute(
+            text("UPDATE incidents SET title = :t, description = :d WHERE id = :id"),
+            {"t": t, "d": d, "id": inc_id}
         )
 
     db.commit()

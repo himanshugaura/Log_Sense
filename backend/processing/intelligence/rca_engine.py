@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Set
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from intelligence.template_normalizer import normalize_template
 
 logger = logging.getLogger("logsense.rca")
 
@@ -250,6 +251,13 @@ class RcaEngine:
 
         top_candidate = scored_candidates[0]
         confidence = min(0.95, round(top_candidate["totalScore"] / 15.0, 2))
+
+        norm_top = normalize_template(top_candidate["template"])
+        if norm_top["isMatched"] or top_candidate["totalScore"] >= 7.0:
+            self.db.execute(
+                text("UPDATE incidents SET title = :title, description = :desc WHERE id = :inc_id"),
+                {"title": norm_top["displayTitle"], "desc": norm_top["shortDescription"], "inc_id": incident_id}
+            )
 
         # Check if top candidates are too close or inconclusive
         conclusion = top_candidate["template"]
