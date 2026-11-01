@@ -263,4 +263,25 @@ export const logService = {
       return [];
     }
   },
+
+  /**
+   * Fetches chronological timeline buckets across the whole log dataset (from first log to last log)
+   */
+  async getTimeline(
+    projectId: string
+  ): Promise<Array<{ time: string; label: string; total: number; errors: number }>> {
+    if (!apiClient.isBackendConnected || !projectId) {
+      return [];
+    }
+
+    try {
+      const res = await apiClient.fetchEndpoint<{
+        timeline: Array<{ time: string; label: string; total: number; errors: number }>;
+      }>(`/logs/${projectId}/timeline`);
+      return res?.timeline || [];
+    } catch (err) {
+      console.warn(`Failed to fetch timeline for ${projectId}:`, err);
+      return [];
+    }
+  },
 };

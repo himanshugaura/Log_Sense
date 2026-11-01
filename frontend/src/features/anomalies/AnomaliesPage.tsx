@@ -27,6 +27,7 @@ import { Button } from '../../components/ui/Button';
 import { StatusIndicator } from '../../components/ui/Badge';
 import { Anomaly, SeverityLevel } from '../../types';
 import { anomalyService } from '../../services/anomaly-service';
+import { logService } from '../../services/log-service';
 import { useTheme } from '../../context/ThemeContext';
 import { useProject } from '../../context/ProjectContext';
 import { normalizeLogTemplate } from '../../utils/template-normalizer';
@@ -37,6 +38,9 @@ export const AnomaliesPage: React.FC = () => {
   const { activeProjectId, isLoading: isProjectLoading, projects } = useProject();
 
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [timeline, setTimeline] = useState<
+    Array<{ time: string; label: string; total: number; errors: number }>
+  >([]);
   const [selectedAnomalyId, setSelectedAnomalyId] = useState<string>('');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedSeverity, setSelectedSeverity] = useState('all');
@@ -51,11 +55,15 @@ export const AnomaliesPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const list = await anomalyService.getAnomalies(activeProjectId, {
-        anomalyType: selectedType,
-        severity: selectedSeverity as any,
-      });
+      const [list, timelineData] = await Promise.all([
+        anomalyService.getAnomalies(activeProjectId, {
+          anomalyType: selectedType,
+          severity: selectedSeverity as any,
+        }),
+        logService.getTimeline(activeProjectId),
+      ]);
       setAnomalies(list);
+      setTimeline(timelineData);
       if (list.length > 0 && (!selectedAnomalyId || !list.find((a) => a.id === selectedAnomalyId))) {
         setSelectedAnomalyId(list[0].id);
       }
@@ -171,23 +179,45 @@ export const AnomaliesPage: React.FC = () => {
               Interactive Anomaly Activity Timeline
             </h2>
             <p className="text-xs text-neutral-500">
-              Deviation events scored with sample standard deviation and Z-scores
+              Chronological timeline across entire dataset (from first log to last log) with statistical baseline spikes (&gt;2σ)
             </p>
           </div>
+          {timeline.length > 0 && (
+            <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700">
+              {timeline[0]?.label} — {timeline[timeline.length - 1]?.label} UTC ({timeline.length} min span)
+            </span>
+          )}
         </div>
 
-        {anomalies.length > 0 ? (
+        {timeline.length > 0 || anomalies.length > 0 ? (
           <div className="h-56 mt-4 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={anomalies.map((a, i) => ({
-                  time: a.timestamp.slice(11, 16) || `A${i + 1}`,
-                  observed: typeof a.observedValue === 'number' ? a.observedValue : 1,
-                  points: a.points || 0,
-                }))}
+                data={
+                  timeline.length > 0
+                    ? timeline.map((t) => ({
+                        time: t.label || t.time.slice(11, 16),
+                        errors: t.errors,
+                        total: t.total,
+                      }))
+                    : [...anomalies]
+                        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                        .map((a, i) => ({
+                          time: a.timestamp.slice(11, 16) || `A${i + 1}`,
+                          errors: typeof a.observedValue === 'number' ? a.observedValue : 1,
+                          total: typeof a.observedValue === 'number' ? a.observedValue : 1,
+                        }))
+                }
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="time" stroke={textColor} fontSize={11} tickLine={false} />
+                <XAxis
+                  dataKey="time"
+                  stroke={textColor}
+                  fontSize={11}
+                  tickLine={false}
+                  interval="preserveStartEnd"
+                  minTickGap={24}
+                />
                 <YAxis stroke={textColor} fontSize={11} tickLine={false} />
                 <Tooltip
                   contentStyle={{
@@ -197,14 +227,18 @@ export const AnomaliesPage: React.FC = () => {
                     fontSize: '12px',
                     color: isDark ? '#fff' : '#000',
                   }}
+                  formatter={(value: any, name: string) => [
+                    `${value} events`,
+                    name === 'errors' ? 'Error & Spike Volume' : 'Total Traffic',
+                  ]}
                 />
-                <Bar dataKey="observed" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Observed Count" />
+                <Bar dataKey="errors" fill="#f59e0b" radius={[4, 4, 0, 0]} name="errors" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         ) : (
           <div className="h-44 flex flex-col items-center justify-center text-center p-4 text-xs text-neutral-500">
-            <p>No statistical anomalies detected in the active dataset.</p>
+            <p>No statistical anomalies or timeline records in the active dataset.</p>
           </div>
         )}
       </Card>

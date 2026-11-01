@@ -59,6 +59,14 @@ router.get(
   logController.getLogEntries,
 );
 
+// --- Chronological Full Dataset Timeline ---
+// GET /api/v1/logs/:projectId/timeline OR /api/v1/logs/projects/:projectId/timeline
+router.get(
+  ["/:projectId/timeline", "/projects/:projectId/timeline"],
+  validateParams(projectIdParamSchema),
+  logController.getLogTimeline,
+);
+
 // --- Log Sources / Upload Records ---
 // GET /api/v1/logs/:projectId/sources OR /api/v1/logs/projects/:projectId/sources
 router.get(

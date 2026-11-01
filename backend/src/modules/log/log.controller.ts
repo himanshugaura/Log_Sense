@@ -193,6 +193,22 @@ export class LogController {
 
     sendResponse(res, StatusCodes.OK, "Log source deleted successfully", { ...result });
   });
+
+  /**
+   * Chronological timeline buckets for full log file span (first log to last log)
+   * GET /api/v1/logs/:projectId/timeline
+   */
+  getLogTimeline = CatchAsync(async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, "User authentication required");
+    }
+
+    const projectId = req.params.projectId as string;
+    const result = await logService.getLogTimeline(projectId, userId);
+
+    sendResponse(res, StatusCodes.OK, "Log timeline retrieved successfully", { timeline: result });
+  });
 }
 
 export const logController = new LogController();

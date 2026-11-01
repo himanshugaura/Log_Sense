@@ -776,6 +776,41 @@ export class LogService {
 
     return { deleted: true, id: sourceId };
   }
+
+  /**
+   * Precomputes chronological minute-by-minute timeline buckets across the whole log dataset (from first log to last log).
+   */
+  async getLogTimeline(projectId: string, userId: string) {
+    await this.validateProjectOwnership(projectId, userId);
+
+    const cacheKey = `log_timeline:${projectId}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
+    const cleanProjId = projectId.replace(/'/g, "''");
+    const rawBuckets = await prisma.$queryRawUnsafe<
+      Array<{ bucket: Date; total: number; errors: number }>
+    >(
+      `SELECT 
+         date_trunc('minute', timestamp) as bucket,
+         count(*)::int as total,
+         count(*) FILTER (WHERE level IN ('ERROR', 'WARN', 'FATAL', 'CRITICAL'))::int as errors
+       FROM log_entries
+       WHERE "projectId" = '${cleanProjId}'
+       GROUP BY bucket
+       ORDER BY bucket ASC;`
+    );
+
+    const timeline = rawBuckets.map((b) => ({
+      time: b.bucket instanceof Date ? b.bucket.toISOString() : new Date(b.bucket).toISOString(),
+      label: b.bucket instanceof Date ? b.bucket.toISOString().slice(11, 16) : new Date(b.bucket).toISOString().slice(11, 16),
+      total: Number(b.total) || 0,
+      errors: Number(b.errors) || 0,
+    }));
+
+    memoryCache.set(cacheKey, timeline, 30);
+    return timeline;
+  }
 }
 
 export const logService = new LogService();
