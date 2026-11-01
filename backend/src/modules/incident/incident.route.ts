@@ -8,6 +8,7 @@ import {
 } from "../../core/middlewares/validateRequest.middleware.js";
 import { incidentController } from "./incident.controller.js";
 import {
+  incidentChatSchema,
   incidentIdParamSchema,
   listIncidentsQuerySchema,
   projectIdParamSchema,
@@ -39,6 +40,14 @@ router.patch(
   validateParams(incidentIdParamSchema),
   validateBody(updateIncidentStatusSchema),
   incidentController.updateIncidentStatus,
+);
+
+// POST /api/v1/incidents/:projectId/:incidentId/chat
+router.post(
+  "/:projectId/:incidentId/chat",
+  validateParams(incidentIdParamSchema),
+  validateBody(incidentChatSchema),
+  incidentController.chatWithCopilot,
 );
 
 export default router;

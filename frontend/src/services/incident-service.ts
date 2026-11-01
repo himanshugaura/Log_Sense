@@ -198,4 +198,26 @@ export const incidentService = {
       return false;
     }
   },
+
+  async chatWithCopilot(
+    projectId: string,
+    incidentId: string,
+    message: string,
+    history?: Array<{ role: 'user' | 'model'; content: string }>
+  ): Promise<{ reply: string; model: string }> {
+    const res = await apiClient.fetchEndpoint<any>(
+      `/incidents/${projectId}/${incidentId}/chat`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message, history }),
+      }
+    );
+    if (res?.data?.reply) {
+      return res.data;
+    }
+    return {
+      reply: res?.reply || res?.message || 'No response generated from Copilot.',
+      model: res?.data?.model || 'default',
+    };
+  },
 };

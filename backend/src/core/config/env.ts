@@ -23,6 +23,9 @@ const envSchema = z.object({
   // Python Processing Service URL
   PROCESSING_SERVICE_URL: z.string().default("http://localhost:8000"),
 
+  // Gemini AI Key
+  GEMINI_API_KEY: z.string().optional(),
+
   // CORS Settings for Deployment
   CORS_ORIGIN: z.string().default("*"),
 

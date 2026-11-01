@@ -34,6 +34,7 @@ import { incidentService } from '../../services/incident-service';
 import { logService } from '../../services/log-service';
 import { useProject } from '../../context/ProjectContext';
 import { normalizeLogTemplate } from '../../utils/template-normalizer';
+import { RcaCopilotDrawer } from './components/RcaCopilotDrawer';
 
 export const IncidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +47,7 @@ export const IncidentDetailPage: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'rca' | 'timeline' | 'action_plan'>('rca');
   const [showTechEvidence, setShowTechEvidence] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   // Matching errors modal state
   const [matchingLogsOpen, setMatchingLogsOpen] = useState(false);
@@ -266,6 +268,16 @@ export const IncidentDetailPage: React.FC = () => {
 
           {/* Status & Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCopilotOpen(true)}
+              className="border-indigo-300 dark:border-indigo-700 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-semibold"
+              icon={<Sparkles className="w-3.5 h-3.5 text-indigo-500" />}
+            >
+              <span>Ask RCA Copilot</span>
+            </Button>
+
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/80 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
               <span>{incident.status === 'OPEN' ? 'Needs investigation' : incident.status}</span>
             </div>
@@ -434,9 +446,19 @@ export const IncidentDetailPage: React.FC = () => {
         {/* Deep Causal Mechanism & Proof (X vs Y) */}
         {report?.whyThisRootCause && (
           <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/60 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              Causal Mechanism & Log Evidence (Initiating Cause X vs Symptoms Y)
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                Causal Mechanism & Log Evidence (Initiating Cause X vs Symptoms Y)
+              </div>
+              <button
+                type="button"
+                onClick={() => setCopilotOpen(true)}
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3 text-blue-500" />
+                <span>Counter-Question in Copilot</span>
+              </button>
             </div>
             <p className="text-xs sm:text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">
               {report.whyThisRootCause}
@@ -447,7 +469,7 @@ export const IncidentDetailPage: React.FC = () => {
         {/* Why this is the root cause */}
         <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/70 border border-neutral-200 dark:border-neutral-800 space-y-3">
           <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider block">
-            Why this is the root cause (and not secondary symptoms):
+            Why this is the root cause 
           </span>
           <ul className="space-y-2 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300">
             {whyDoWeThinkThis.map((bullet, idx) => (
@@ -1047,6 +1069,30 @@ export const IncidentDetailPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Floating Ask Copilot Action Button */}
+      <button
+        type="button"
+        onClick={() => setCopilotOpen(true)}
+        className="fixed bottom-6 right-6 z-40 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl hover:shadow-2xl flex items-center gap-2.5 text-xs sm:text-sm font-semibold transition-all transform hover:-translate-y-0.5 cursor-pointer border border-indigo-400/30"
+        title="Open RCA War Room Copilot"
+      >
+        <Sparkles className="w-4 h-4 text-indigo-200 animate-pulse" />
+        <span>RCA Copilot</span>
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-700/80 font-mono text-indigo-100">
+          Chat
+        </span>
+      </button>
+
+      {/* RCA War Room Copilot Drawer */}
+      {activeProjectId && (
+        <RcaCopilotDrawer
+          isOpen={copilotOpen}
+          onClose={() => setCopilotOpen(false)}
+          incident={incident}
+          projectId={activeProjectId}
+        />
       )}
     </div>
   );

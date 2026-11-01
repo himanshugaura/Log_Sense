@@ -20,5 +20,18 @@ export const updateIncidentStatusSchema = z.object({
   status: z.enum(["OPEN", "INVESTIGATING", "RESOLVED"]),
 });
 
+export const incidentChatSchema = z.object({
+  message: z.string().min(1, "Message cannot be empty").max(2000, "Message too long"),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "model"]),
+        content: z.string(),
+      }),
+    )
+    .optional(),
+});
+
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 export type UpdateIncidentStatusBody = z.infer<typeof updateIncidentStatusSchema>;
+export type IncidentChatBody = z.infer<typeof incidentChatSchema>;
