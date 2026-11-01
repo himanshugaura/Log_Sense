@@ -21,7 +21,7 @@ import { normalizeLogTemplate } from '../../utils/template-normalizer';
 
 export const IncidentsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { activeProjectId } = useProject();
+  const { activeProjectId, isLoading: isProjectLoading, projects } = useProject();
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,12 @@ export const IncidentsPage: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
 
   const loadIncidents = async () => {
-    if (!activeProjectId) return;
+    if (!activeProjectId) {
+      if (!isProjectLoading) {
+        setLoading(false);
+      }
+      return;
+    }
     setLoading(true);
     try {
       const data = await incidentService.getIncidents(activeProjectId, {
@@ -55,7 +60,57 @@ export const IncidentsPage: React.FC = () => {
 
   useEffect(() => {
     loadIncidents();
-  }, [activeProjectId, searchQuery, selectedSeverity, selectedStatus]);
+  }, [activeProjectId, isProjectLoading, searchQuery, selectedSeverity, selectedStatus]);
+
+  // Loading state: Do not render incident list until data is fully loaded
+  if (loading || isProjectLoading) {
+    return (
+      <div className="py-32 flex flex-col items-center justify-center space-y-4 max-w-md mx-auto text-center animate-fade-in">
+        <div className="relative flex items-center justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-neutral-100 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 flex items-center justify-center shadow-xs">
+            <RefreshCw className="w-6 h-6 text-neutral-500 dark:text-neutral-400 animate-spin" />
+          </div>
+          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-500 animate-pulse border-2 border-white dark:border-neutral-900" />
+        </div>
+        <div className="space-y-1.5">
+          <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+            Loading Incident Management & Triage...
+          </h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-sm leading-relaxed">
+            Correlating anomalies, 15-point root cause candidate rankings, and Gemini SRE summaries.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Zero-state if no project
+  if (!activeProjectId || projects.length === 0) {
+    return (
+      <div className="py-20 text-center max-w-md mx-auto space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-850 mx-auto flex items-center justify-center text-neutral-600 dark:text-neutral-300">
+          <Flame className="w-6 h-6 text-rose-500" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+            No Project Workspace Selected
+          </h2>
+          <p className="text-xs text-neutral-500 mt-1">
+            Select or create a project workspace to inspect correlated incidents and 15-point RCA.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => navigate('/organizations')}
+          className="mx-auto"
+          icon={<ArrowRight className="w-4 h-4" />}
+        >
+          Go to Organizations
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

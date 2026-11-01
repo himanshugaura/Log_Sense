@@ -34,7 +34,7 @@ import { normalizeLogTemplate } from '../../utils/template-normalizer';
 export const AnomaliesPage: React.FC = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
-  const { activeProjectId } = useProject();
+  const { activeProjectId, isLoading: isProjectLoading, projects } = useProject();
 
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [selectedAnomalyId, setSelectedAnomalyId] = useState<string>('');
@@ -43,7 +43,12 @@ export const AnomaliesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   const loadAnomalies = async () => {
-    if (!activeProjectId) return;
+    if (!activeProjectId) {
+      if (!isProjectLoading) {
+        setLoading(false);
+      }
+      return;
+    }
     setLoading(true);
     try {
       const list = await anomalyService.getAnomalies(activeProjectId, {
@@ -61,7 +66,7 @@ export const AnomaliesPage: React.FC = () => {
 
   useEffect(() => {
     loadAnomalies();
-  }, [activeProjectId, selectedType, selectedSeverity]);
+  }, [activeProjectId, isProjectLoading, selectedType, selectedSeverity]);
 
   const activeAnomaly = anomalies.find((a) => a.id === selectedAnomalyId) || anomalies[0];
 
@@ -70,6 +75,56 @@ export const AnomaliesPage: React.FC = () => {
   const textColor = isDark ? '#a3a3a3' : '#737373';
   const tooltipBg = isDark ? '#171717' : '#ffffff';
   const tooltipBorder = isDark ? '#262626' : '#e5e5e5';
+
+  // Loading state: Do not render any anomaly UI until telemetry is completely loaded
+  if (loading || isProjectLoading) {
+    return (
+      <div className="py-32 flex flex-col items-center justify-center space-y-4 max-w-md mx-auto text-center animate-fade-in">
+        <div className="relative flex items-center justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-neutral-100 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 flex items-center justify-center shadow-xs">
+            <RefreshCw className="w-6 h-6 text-neutral-500 dark:text-neutral-400 animate-spin" />
+          </div>
+          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 animate-pulse border-2 border-white dark:border-neutral-900" />
+        </div>
+        <div className="space-y-1.5">
+          <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+            Loading Anomaly Detection Telemetry...
+          </h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-sm leading-relaxed">
+            Evaluating 5-minute statistical moving baselines, frequency standard deviation Z-scores, and template emergence.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Zero-state if no project
+  if (!activeProjectId || projects.length === 0) {
+    return (
+      <div className="py-20 text-center max-w-md mx-auto space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-850 mx-auto flex items-center justify-center text-neutral-600 dark:text-neutral-300">
+          <AlertTriangle className="w-6 h-6 text-amber-500" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+            No Project Workspace Selected
+          </h2>
+          <p className="text-xs text-neutral-500 mt-1">
+            Select or create a project workspace to inspect statistical anomalies and baseline deviations.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => navigate('/organizations')}
+          className="mx-auto"
+          icon={<ArrowRight className="w-4 h-4" />}
+        >
+          Go to Organizations
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
