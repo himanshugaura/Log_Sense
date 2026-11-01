@@ -39,7 +39,7 @@ export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const { isSignedIn } = useAuth();
-  const { activeProject, activeProjectId, projects } = useProject();
+  const { activeProject, activeProjectId, projects, isLoading: isProjectLoading } = useProject();
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
@@ -51,9 +51,12 @@ export const OverviewPage: React.FC = () => {
 
   const loadData = async () => {
     if (!activeProjectId) {
-      setLoading(false);
+      if (!isProjectLoading) {
+        setLoading(false);
+      }
       return;
     }
+    setLoading(true);
     try {
       const [incList, anomList, sourcesList] = await Promise.all([
         incidentService.getIncidents(activeProjectId),
@@ -76,7 +79,7 @@ export const OverviewPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [activeProjectId]);
+  }, [activeProjectId, isProjectLoading]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -94,8 +97,30 @@ export const OverviewPage: React.FC = () => {
   const errorSpikesCount = anomalies.filter((a) => a.type === 'SPIKE').length;
   const activeIncidents = incidents.filter((i) => i.status !== 'RESOLVED');
 
+  // Loading state: Do not render any dashboard UI until all telemetry is completely loaded
+  if (loading || isProjectLoading) {
+    return (
+      <div className="py-32 flex flex-col items-center justify-center space-y-4 max-w-md mx-auto text-center animate-fade-in">
+        <div className="relative flex items-center justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-neutral-100 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 flex items-center justify-center shadow-xs">
+            <RefreshCw className="w-6 h-6 text-neutral-500 dark:text-neutral-400 animate-spin" />
+          </div>
+          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse border-2 border-white dark:border-neutral-900" />
+        </div>
+        <div className="space-y-1.5">
+          <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+            Loading Overview Data...
+          </h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-sm leading-relaxed">
+            Fetching service telemetry, statistical baseline spikes, and active incident correlations.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Zero-state if no project
-  if (!loading && (!activeProjectId || projects.length === 0)) {
+  if (!activeProjectId || projects.length === 0) {
     return (
       <div className="py-20 text-center max-w-md mx-auto space-y-4">
         <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-850 mx-auto flex items-center justify-center text-neutral-600 dark:text-neutral-300">
