@@ -501,29 +501,6 @@ export const IncidentDetailPage: React.FC = () => {
           )}
         </div>
 
-        {/* Deep Causal Mechanism & Proof (X vs Y) */}
-        {report?.whyThisRootCause && (
-          <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/60 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                Causal Mechanism & Log Evidence (Initiating Cause X vs Symptoms Y)
-              </div>
-              <button
-                type="button"
-                onClick={() => setCopilotOpen(true)}
-                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Sparkles className="w-3 h-3 text-blue-500" />
-                <span>Counter-Question in Copilot</span>
-              </button>
-            </div>
-            <p className="text-xs sm:text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">
-              {report.whyThisRootCause}
-            </p>
-          </div>
-        )}
-
         {/* Why this is the root cause */}
         <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/70 border border-neutral-200 dark:border-neutral-800 space-y-3">
           <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider block">
