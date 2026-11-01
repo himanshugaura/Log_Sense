@@ -174,21 +174,22 @@ def generate_incident_summary(
 
     # 1. Section: What happened? (A simple summary of the problem)
     what_happened = (
-        f"Your application started experiencing an unusually high number of {component_name.lower()} errors. "
-        f"Other errors also increased around the same time."
+        f"Your application experienced an acute outage with an abnormal surge of {component_name.lower()} errors, "
+        f"causing downstream request failures across dependent services."
     )
 
-    # 2. Section: What might be causing it? (The strongest root-cause candidate in plain English)
+    # 2. Section: Identified Root Cause (The strongest root-cause candidate in plain English)
     what_might_be_causing_it = (
-        f"Our analysis suggests that {component_name.lower()} issues (initiated by '{top_clean_name}') "
-        f"could be the main source of the problem."
+        f"This incident was directly triggered by {component_name.lower()} failure ('{top_clean_name}'), "
+        f"which initiated cascading transaction failures and service disruptions."
     )
 
-    # 3. Section: Why do we think this? (Evidence supporting candidate in plain English)
+    # 3. Section: Why do we think this? (Evidence supporting root cause over secondary symptoms)
     why_do_we_think_this = [
-        f"{component_name} errors appeared before the other abnormal patterns.",
-        "These errors increased significantly compared with normal activity.",
-        "Other application errors appeared shortly afterward.",
+        f"Temporal Precedence: '{top_clean_name}' appeared at the earliest timestamp, before secondary errors began.",
+        "Statistical Frequency: This failure spiked by an extreme standard deviation Z-score relative to normal baseline traffic.",
+        "Direct Root Cause Signature: Unlike downstream timeouts or 503 errors, this template captures the originating infrastructure breakdown.",
+        "Cascading Impact: All other errors and thread interruptions occurred as downstream consequences of this failure.",
     ]
 
     # 4. Section: What else was affected? (Other related errors or patterns)

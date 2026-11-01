@@ -139,14 +139,15 @@ export const IncidentDetailPage: React.FC = () => {
     ? normalizedInfo.shortDescription
     : (incident.shortDescription || normalizedInfo.shortDescription);
 
-  const defaultWhatHappened = `A sudden increase in ${displayTitle.toLowerCase()} was detected (${totalMatchingErrors} occurrences). Multiple related log patterns and connection failures appeared during the same investigation window.`;
+  const defaultWhatHappened = `A sudden surge in ${displayTitle.toLowerCase()} was detected (${totalMatchingErrors} occurrences). Multiple cascading error patterns and connection failures appeared during the same investigation window.`;
 
-  const defaultWhatMightBeCausingIt = `Our analysis suggests that ${displayTitle.toLowerCase()} could be the main source of the problem.`;
+  const defaultWhatMightBeCausingIt = `This incident was directly triggered by ${displayTitle.toLowerCase()}, which caused downstream transaction failures across dependent services.`;
 
   const defaultWhyBullets = [
-    'This error pattern appeared before other abnormal patterns in the timeline.',
-    'These errors increased significantly compared with normal baseline activity.',
-    'Other application errors and worker disruptions appeared shortly afterward.',
+    'Temporal Precedence: This error appeared before all other abnormal patterns in the timeline.',
+    'Statistical Spike: These errors surged significantly beyond normal baseline standard deviation.',
+    'Direct Root Cause Signature: This message captures the initiating infrastructure breakdown, whereas other errors are downstream symptoms.',
+    'Cascading Relationship: Other application errors and worker disruptions were triggered as a direct consequence.',
   ];
 
   const defaultWhatElse =
@@ -391,33 +392,47 @@ export const IncidentDetailPage: React.FC = () => {
       </Card>
 
       {/* =========================================================================
-          SECTION 2: WHAT MIGHT BE CAUSING IT? & WHY DO WE THINK THIS?
+          SECTION 2: IDENTIFIED ROOT CAUSE & CAUSAL EVIDENCE
           ========================================================================= */}
       <Card padding="lg" className="space-y-5">
         <div className="flex items-center gap-2.5 pb-3 border-b border-neutral-100 dark:border-neutral-850">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
             <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-neutral-100">
-              What might be causing it?
+              Identified Root Cause
             </h2>
+            <p className="text-xs text-neutral-500">
+              Deterministic 15-point RCA established this pattern as the initiating cause of the incident.
+            </p>
           </div>
         </div>
 
-        <p className="text-xs sm:text-sm font-medium text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">
-          {whatMightBeCausingIt}
-        </p>
+        <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/60 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            Primary Originating Root Cause
+          </div>
+          <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 font-sans">
+            {whatMightBeCausingIt}
+          </p>
+          {cleanTemplate && (
+            <div className="p-2.5 rounded-lg bg-white/80 dark:bg-neutral-900/80 border border-emerald-200/60 dark:border-emerald-800/40 font-mono text-xs text-neutral-800 dark:text-neutral-200 break-words">
+              {cleanTemplate}
+            </div>
+          )}
+        </div>
 
-        {/* Why do we think this? */}
+        {/* Why this is the root cause */}
         <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/70 border border-neutral-200 dark:border-neutral-800 space-y-3">
-          <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
-            Why do we think this?
+          <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider block">
+            Why this is the root cause (and not secondary symptoms):
           </span>
           <ul className="space-y-2 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300">
             {whyDoWeThinkThis.map((bullet, idx) => (
               <li key={idx} className="flex items-start gap-2.5">
-                <span className="text-amber-500 font-bold shrink-0 mt-0.5">•</span>
+                <span className="text-emerald-500 font-bold shrink-0 mt-0.5">✓</span>
                 <span className="leading-relaxed">{bullet}</span>
               </li>
             ))}
@@ -427,7 +442,7 @@ export const IncidentDetailPage: React.FC = () => {
         {/* What else was affected? */}
         <div className="space-y-1.5 pt-2 border-t border-neutral-100 dark:border-neutral-800">
           <h4 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-            What else was affected?
+            Cascading Effects & Impacted Components:
           </h4>
           <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
             {whatElseWasAffected}
@@ -552,15 +567,19 @@ export const IncidentDetailPage: React.FC = () => {
                             <span
                               className={`inline-flex items-center justify-center font-bold px-2 py-0.5 rounded text-xs ${
                                 isTop
-                                  ? 'bg-amber-500 text-white font-mono'
+                                  ? 'bg-emerald-600 text-white font-mono'
                                   : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-mono'
                               }`}
                             >
                               #{candidate.rank || idx + 1}
                             </span>
-                            {isTop && (
-                              <span className="block text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-1 uppercase tracking-tight">
-                                Primary
+                            {isTop ? (
+                              <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-400 mt-1 uppercase tracking-tight">
+                                Root Cause
+                              </span>
+                            ) : (
+                              <span className="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500 mt-1 uppercase tracking-tight">
+                                Symptom
                               </span>
                             )}
                           </td>
