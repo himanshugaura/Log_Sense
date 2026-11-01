@@ -186,6 +186,13 @@ export const IncidentDetailPage: React.FC = () => {
       ? report.whatShouldIDo
       : defaultSteps;
 
+  const immediateMitigation =
+    report?.immediateMitigation && report.immediateMitigation.length > 0
+      ? report.immediateMitigation
+      : whatShouldIDo;
+
+  const preventionPlan = report?.preventionPlan || [];
+
   // Scoring data for technical drawer
   const rcaScore = topCandidate?.totalScore ?? 14;
 
@@ -423,6 +430,19 @@ export const IncidentDetailPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Deep Causal Mechanism & Proof (X vs Y) */}
+        {report?.whyThisRootCause && (
+          <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/60 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              Causal Mechanism & Log Evidence (Initiating Cause X vs Symptoms Y)
+            </div>
+            <p className="text-xs sm:text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">
+              {report.whyThisRootCause}
+            </p>
+          </div>
+        )}
 
         {/* Why this is the root cause */}
         <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/70 border border-neutral-200 dark:border-neutral-800 space-y-3">
@@ -833,42 +853,63 @@ export const IncidentDetailPage: React.FC = () => {
 
               {/* Tab 3: Action Plan */}
               {activeTab === 'action_plan' && (
-                <Card padding="lg" className="space-y-4">
-                  <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 pb-2 border-b border-neutral-100 dark:border-neutral-850">
-                    Remediation Checklist & Action Plan
-                  </h3>
+                <Card padding="lg" className="space-y-6">
+                  <div className="space-y-1 pb-3 border-b border-neutral-100 dark:border-neutral-850">
+                    <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                      Engineering Action Plan & Mitigation
+                    </h3>
+                    <p className="text-xs text-neutral-500">
+                      AI and evidence-backed remediation procedures derived from real log trace analysis.
+                    </p>
+                  </div>
 
+                  {/* Immediate Remediation Procedures */}
                   <div className="space-y-3">
-                    <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 space-y-1.5">
-                      <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 block">
-                        1. Inspect Initiating Cluster Pattern
-                      </span>
-                      <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
-                        {incident.suspectedRootCauseTemplate || topCandidate?.template || 'Under analysis'}
-                      </p>
-                      <p className="text-xs text-neutral-500">
-                        Check whether parameters matching &lt;*&gt; point to an external resource exhaustion or network partition.
-                      </p>
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      Immediate Problem-Solving Remediation
                     </div>
-
-                    <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 space-y-1.5">
-                      <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 block">
-                        2. Correlate Downstream Impact
-                      </span>
-                      <p className="text-xs text-neutral-500">
-                        Review the affected clusters that spiked in the disturbance window following the primary anomaly to confirm whether failure cascaded into thread termination.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 space-y-1.5">
-                      <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 block">
-                        3. Verify Steady-State Recovery
-                      </span>
-                      <p className="text-xs text-neutral-500">
-                        Ensure error rate drops back below the 5-minute moving baseline threshold once the underlying disruption is cleared.
-                      </p>
+                    <div className="space-y-2.5">
+                      {immediateMitigation.map((step, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850/80 flex items-start gap-3"
+                        >
+                          <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                            {idx + 1}
+                          </span>
+                          <span className="text-xs sm:text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed">
+                            {step}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
+
+                  {/* Permanent Architectural Prevention */}
+                  {preventionPlan.length > 0 && (
+                    <div className="space-y-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                      <div className="flex items-center gap-2 text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                        Permanent Prevention & Architectural Fixes
+                      </div>
+                      <div className="space-y-2.5">
+                        {preventionPlan.map((fix, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3.5 rounded-xl border border-indigo-100 dark:border-indigo-950/60 bg-indigo-50/40 dark:bg-indigo-950/20 flex items-start gap-3"
+                          >
+                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                              {idx + 1}
+                            </span>
+                            <span className="text-xs sm:text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed">
+                              {fix}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </Card>
               )}
             </div>

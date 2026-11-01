@@ -156,6 +156,10 @@ export interface StructuredIncidentReport {
   friendlyTitle?: string;
   whatHappened?: string;
   whatMightBeCausingIt?: string;
+  whyThisRootCause?: string;
+  propagationTimeline?: string[];
+  immediateMitigation?: string[];
+  preventionPlan?: string[];
   whyDoWeThinkThis?: string[];
   whatElseWasAffected?: string;
   whatShouldIDo?: string[];

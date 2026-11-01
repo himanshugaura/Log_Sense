@@ -255,7 +255,7 @@ class LogProcessor:
             self.db.commit()
             logger.info(f"Ingestion job {job_id} successfully COMPLETED. Processed {total_processed} records.")
 
-            # 10. Generate Incident Explanations (AI / Deterministic) asynchronously for primary incidents in background
+            # 10. Generate Incident Explanations (AI / Deterministic) with rich log context
             if rca_results:
                 def run_summaries():
                     try:
@@ -264,12 +264,14 @@ class LogProcessor:
                                 try:
                                     generate_incident_summary(bg_db, inc_id, rca_res)
                                 except Exception as e:
-                                    logger.warn(f"Background summary warning for incident {inc_id}: {e}")
+                                    logger.warn(f"Summary generation warning for incident {inc_id}: {e}")
                     except Exception as bg_err:
-                        logger.warn(f"Background summary worker error: {bg_err}")
+                        logger.warn(f"Summary worker error: {bg_err}")
 
-                summary_thread = threading.Thread(target=run_summaries, daemon=True)
+                summary_thread = threading.Thread(target=run_summaries, daemon=False)
                 summary_thread.start()
+                # Wait up to 20 seconds for AI summaries so CLI worker does not exit prematurely
+                summary_thread.join(timeout=20.0)
 
             return total_processed
 

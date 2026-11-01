@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -19,56 +19,114 @@ def get_friendly_category_and_title(template: str) -> tuple[str, str]:
     norm = normalize_template(template)
     return norm["category"], norm["displayTitle"]
 
-def explain_technical_log_pattern(template: str) -> dict:
+def extract_log_evidence_context(
+    db: Session,
+    project_id: str,
+    incident_id: str,
+    started_at: datetime,
+    top_cluster_id: Optional[str],
+    candidates: List[dict]
+) -> tuple[List[str], List[str], List[str]]:
     """
-    Translates unfamiliar or technical Drain3 log templates into plain-English explanations.
-    Explains which component the pattern is associated with and what it generally indicates.
+    Extracts rich log file context (primary cluster logs, secondary symptom logs,
+    and chronological incident window progression) to give real logs context to Gemini.
     """
-    t_lower = (template or "").lower()
-    clean_tmpl = template[:100] if template else "Unknown Pattern"
+    primary_log_lines = []
+    secondary_log_lines = []
+    timeline_lines = []
 
-    if any(k in t_lower for k in ["hikaripool", "connection pool", "pool exhausted", "max pool", "borrowobject"]):
-        return {
-            "pattern": clean_tmpl,
-            "component": "Database Connection Pool",
-            "explanation": "This message is associated with the application's database connection pool. It generally indicates that all available database connections were exhausted, causing incoming requests to wait and time out.",
-        }
-    elif any(k in t_lower for k in ["connection broken", "broken pipe", "closed socket", "socket closed", "connection refused", "connection reset"]):
-        return {
-            "pattern": clean_tmpl,
-            "component": "TCP / Network Socket Layer",
-            "explanation": "This message is associated with network communication channels. It generally indicates that an active network connection was abruptly closed or reset by the remote peer or an intermediary gateway.",
-        }
-    elif any(k in t_lower for k in ["interrupting sendworker", "interrupted while waiting", "leaving thread", "worker thread", "executor"]):
-        return {
-            "pattern": clean_tmpl,
-            "component": "Asynchronous Worker Thread Pool",
-            "explanation": "This message is associated with internal background task executors. It generally indicates that an active communication worker thread was forcibly interrupted due to an upstream connection failure.",
-        }
-    elif any(k in t_lower for k in ["session", "timed out", "timeout", "expiring session", "notification time out"]):
-        return {
-            "pattern": clean_tmpl,
-            "component": "Distributed Heartbeat & Session State",
-            "explanation": "This message is associated with cluster consensus or client session leasing. It generally indicates that heartbeat signals between nodes failed to arrive within the lease timeout window, triggering session expiration.",
-        }
-    elif any(k in t_lower for k in ["ioexception", "file not found", "disk full", "permission denied"]):
-        return {
-            "pattern": clean_tmpl,
-            "component": "File System & I/O Subsystem",
-            "explanation": "This message is associated with local disk or socket I/O operations. It indicates an operating system level failure while attempting to read or write data.",
-        }
-    elif any(k in t_lower for k in ["outofmemory", "oom", "heap space", "gc overhead"]):
-        return {
-            "pattern": clean_tmpl,
-            "component": "Runtime Memory Subsystem",
-            "explanation": "This message is associated with application memory allocation. It indicates high memory pressure, preventing the service from handling incoming tasks.",
-        }
-    else:
-        return {
-            "pattern": clean_tmpl,
-            "component": "Application Service Runtime",
-            "explanation": "This message indicates an unhandled error condition or operational warning encountered during request execution.",
-        }
+    # 1. Primary Root Cause Cluster Raw Logs
+    if top_cluster_id:
+        try:
+            p_rows = db.execute(
+                text("""
+                    SELECT timestamp, level, "serviceName", "traceId", "rawMessage"
+                    FROM log_entries
+                    WHERE "clusterId" = :cluster_id
+                    ORDER BY timestamp ASC
+                    LIMIT 8
+                """),
+                {"cluster_id": top_cluster_id}
+            ).fetchall()
+            for r in p_rows:
+                ts_str = r[0].strftime("%H:%M:%S.%f")[:-3] if r[0] else "00:00:00"
+                svc = r[2] or "app"
+                lvl = r[1] or "ERROR"
+                trace = f"trace={r[3]} " if r[3] else ""
+                primary_log_lines.append(f"[{ts_str}] [{svc}] [{lvl}] {trace}{r[4]}")
+        except Exception as pe:
+            logger.warn(f"Failed to fetch primary log context: {pe}")
+
+    # 2. Secondary Symptom Logs (from candidates rank 2, 3, 4)
+    for cand in candidates[1:4]:
+        cid = cand.get("clusterId")
+        if not cid or cid == top_cluster_id:
+            continue
+        try:
+            s_rows = db.execute(
+                text("""
+                    SELECT timestamp, level, "serviceName", "traceId", "rawMessage"
+                    FROM log_entries
+                    WHERE "clusterId" = :cluster_id
+                    ORDER BY timestamp ASC
+                    LIMIT 2
+                """),
+                {"cluster_id": cid}
+            ).fetchall()
+            for r in s_rows:
+                ts_str = r[0].strftime("%H:%M:%S.%f")[:-3] if r[0] else "00:00:00"
+                svc = r[2] or "app"
+                lvl = r[1] or "ERROR"
+                trace = f"trace={r[3]} " if r[3] else ""
+                secondary_log_lines.append(f"[{ts_str}] [{svc}] [{lvl}] {trace}{r[4]}")
+        except Exception:
+            pass
+
+    # 3. Chronological Progression across the Incident Window (from -1m to +10m)
+    try:
+        t_rows = db.execute(
+            text("""
+                SELECT timestamp, level, "serviceName", "traceId", "rawMessage"
+                FROM log_entries
+                WHERE "projectId" = :proj_id
+                  AND level IN ('ERROR', 'WARN', 'FATAL', 'CRITICAL')
+                  AND timestamp >= :start_window
+                  AND timestamp <= :end_window
+                ORDER BY timestamp ASC
+                LIMIT 15
+            """),
+            {
+                "proj_id": project_id,
+                "start_window": started_at - timedelta(minutes=1),
+                "end_window": started_at + timedelta(minutes=10),
+            }
+        ).fetchall()
+
+        if len(t_rows) < 3:
+            # Fallback to general errors if timestamps don't strictly align
+            t_rows = db.execute(
+                text("""
+                    SELECT timestamp, level, "serviceName", "traceId", "rawMessage"
+                    FROM log_entries
+                    WHERE "projectId" = :proj_id
+                      AND level IN ('ERROR', 'WARN', 'FATAL', 'CRITICAL')
+                    ORDER BY timestamp ASC
+                    LIMIT 15
+                """),
+                {"proj_id": project_id}
+            ).fetchall()
+
+        for r in t_rows:
+            ts_str = r[0].strftime("%H:%M:%S.%f")[:-3] if r[0] else "00:00:00"
+            svc = r[2] or "system"
+            lvl = r[1] or "ERROR"
+            trace = f"trace={r[3]} " if r[3] else ""
+            timeline_lines.append(f"[{ts_str}] [{svc}] [{lvl}] {trace}{r[4]}")
+    except Exception as te:
+        logger.warn(f"Failed to fetch timeline logs: {te}")
+
+    return primary_log_lines, secondary_log_lines, timeline_lines
+
 
 def generate_incident_summary(
     db: Session,
@@ -77,18 +135,10 @@ def generate_incident_summary(
     model_name: Optional[str] = None
 ) -> dict:
     """
-    Implements Part 8 of the LogSense Specification:
-    Transforms technical anomaly data and 15-point deterministic RCA findings into
-    a user-friendly, plain-English incident explanation with 6 clear sections:
-    1. What happened? (Simple summary of the problem)
-    2. What might be causing it? (Strongest root-cause candidate in simple terms)
-    3. Why do we think this? (Evidence supporting the candidate without raw math)
-    4. What else was affected? (Other related errors or components)
-    5. What should you do? (Actionable investigation steps)
-    6. How certain are we? (Analysis confidence & uncertainty)
-    Preserves all technical math and scoring in an expandable Technical Evidence section for developers.
+    Generates a deep, technical, problem-solving Incident Root Cause Analysis (RCA)
+    backed by real log file context, chronological error propagation, and 15-point multi-factor scoring.
     """
-    logger.info(f"Generating user-friendly incident explanation for incident {incident_id}")
+    logger.info(f"Generating technical problem-solving RCA for incident {incident_id}")
 
     incident = db.execute(
         text("SELECT id, \"projectId\", title, description, severity, \"startedAt\" FROM incidents WHERE id = :id"),
@@ -110,21 +160,12 @@ def generate_incident_summary(
     candidates = rca_result.get("candidates", [])
 
     component_name, friendly_title = get_friendly_category_and_title(top_template)
+    top_cluster_id = top_candidate.get("clusterId")
 
-    # Fetch sample raw log lines for top candidate cluster
-    raw_samples = []
-    if top_candidate.get("clusterId"):
-        raw_rows = db.execute(
-            text("""
-                SELECT "rawMessage", timestamp
-                FROM log_entries
-                WHERE "clusterId" = :cluster_id
-                ORDER BY timestamp DESC
-                LIMIT 5
-            """),
-            {"cluster_id": top_candidate["clusterId"]}
-        ).fetchall()
-        raw_samples = [f"[{r[1].strftime('%H:%M:%S')}] {r[0]}" for r in raw_rows]
+    # Extract real log file context
+    primary_log_lines, secondary_log_lines, timeline_lines = extract_log_evidence_context(
+        db, project_id, incident_id, started_at, top_cluster_id, candidates
+    )
 
     # Fetch anomalies linked to this incident
     linked_anomalies = db.execute(
@@ -138,7 +179,6 @@ def generate_incident_summary(
         {"inc_id": incident_id}
     ).fetchall()
 
-    # Aggregate metrics across the incident window
     total_matching_errors = sum((la[3] or 1) for la in linked_anomalies) or top_candidate.get("maxOccurrence", 1)
     affected_clusters_set = set()
     secondary_pattern_names = []
@@ -162,112 +202,66 @@ def generate_incident_summary(
                         if tmpl and tmpl != top_template:
                             secondary_pattern_names.append(tmpl)
 
-    if top_candidate.get("clusterId"):
-        affected_clusters_set.add(top_candidate["clusterId"])
+    if top_cluster_id:
+        affected_clusters_set.add(top_cluster_id)
 
     affected_patterns_count = max(len(affected_clusters_set), len(candidates), 1)
 
-    # Clean template snippet for plain language
     top_clean_name = top_template.replace("<*>", "").strip()
     if len(top_clean_name) > 60:
         top_clean_name = top_clean_name[:60] + "..."
 
-    # 1. Section: What happened? (A simple summary of the problem)
+    # Deterministic high-quality default sections
     what_happened = (
-        f"Your application experienced an acute outage with an abnormal surge of {component_name.lower()} errors, "
-        f"causing downstream request failures across dependent services."
+        f"An acute operational disturbance was triggered by an abnormal surge of {component_name.lower()} errors, "
+        f"causing cascading request failures and elevated latency across dependent services."
     )
 
-    # 2. Section: Identified Root Cause (The strongest root-cause candidate in plain English)
     what_might_be_causing_it = (
-        f"This incident was directly triggered by {component_name.lower()} failure ('{top_clean_name}'), "
+        f"The definitive root cause was identified as {component_name.lower()} failure ('{top_clean_name}'), "
         f"which initiated cascading transaction failures and service disruptions."
     )
 
-    # 3. Section: Why do we think this? (Evidence supporting root cause over secondary symptoms)
+    why_this_root_cause = (
+        f"Candidate #1 ('{top_clean_name}') is established as the initiating root cause (X) because it appears at the earliest timestamp "
+        f"in the chronological error trace. Downstream errors (such as connection pool exhaustion, socket timeouts, or HTTP 504 errors) "
+        f"occurred as consequential symptoms (Y) resulting directly from this initial failure."
+    )
+
     why_do_we_think_this = [
-        f"Temporal Precedence: '{top_clean_name}' appeared at the earliest timestamp, before secondary errors began.",
-        "Statistical Frequency: This failure spiked by an extreme standard deviation Z-score relative to normal baseline traffic.",
-        "Direct Root Cause Signature: Unlike downstream timeouts or 503 errors, this template captures the originating infrastructure breakdown.",
-        "Cascading Impact: All other errors and thread interruptions occurred as downstream consequences of this failure.",
+        f"Temporal Precedence: '{top_clean_name}' struck first chronologically, preceding all secondary errors.",
+        f"Statistical Surge: Pattern frequency surged by an extreme Z-score (+{top_candidate.get('maxZScore', 4.5):.1f} std dev) from baseline.",
+        "Causal Chain Evidence: Downstream errors and worker interruptions propagated directly from this failure.",
+        "Root Cause Multi-Factor Score: Ranked #1 with highest composite score across temporal, frequency, and severity dimensions.",
     ]
 
-    # 4. Section: What else was affected? (Other related errors or patterns)
-    if secondary_pattern_names:
-        clean_sec = secondary_pattern_names[0].replace("<*>", "").strip()
-        if len(clean_sec) > 50:
-            clean_sec = clean_sec[:50] + "..."
-        what_else_was_affected = (
-            f"Shortly after the initial disturbance, secondary errors such as '{clean_sec}' and background worker interruptions "
-            f"were triggered across {affected_patterns_count} related error patterns."
-        )
-    else:
-        what_else_was_affected = (
-            f"Multiple worker threads and secondary operations were impacted during the same 10-minute detection window, "
-            f"accounting for {total_matching_errors} matching errors."
-        )
+    what_else_was_affected = (
+        f"Shortly after the initial disturbance, secondary errors and worker interruptions "
+        f"were triggered across {affected_patterns_count} related error patterns accounting for {total_matching_errors} events."
+    )
 
-    # 5. Section: What should you do? (Actionable, numbered investigation steps)
-    t_lower = top_template.lower()
-    if any(k in t_lower for k in ["hikaripool", "connection pool", "pool"]):
-        what_should_i_do = [
-            "Check whether your database is running and accepting new connections.",
-            "Check database connection pool limits and active connection lifetimes.",
-            "Review connection timeout settings and verify no slow queries are locking connections.",
-            "Investigate the database server logs around the incident time.",
-        ]
-    elif any(k in t_lower for k in ["connection", "socket", "network", "broken pipe"]):
-        what_should_i_do = [
-            "Check network connectivity between application pods and external services.",
-            "Inspect socket allocation and firewall keep-alive timeout settings.",
-            "Review connection retry and backoff configurations in your client.",
-            "Check host and gateway logs for network drops or proxy restarts.",
-        ]
-    elif any(k in t_lower for k in ["session", "timed out", "timeout"]):
-        what_should_i_do = [
-            "Verify cluster heartbeat latency and network stability.",
-            "Inspect garbage collection (GC) pauses causing heartbeat lease expirations.",
-            "Review session timeout settings and client reconnect backoff limits.",
-            "Check server event loop responsiveness around the incident window.",
-        ]
-    else:
-        what_should_i_do = [
-            f"Inspect the application log lines containing '{top_clean_name}'.",
-            "Check system resource usage (CPU, memory, disk I/O) at the time of the incident.",
-            "Review any recent deployments or configuration updates that coincided with the spike.",
-            "Investigate upstream and downstream dependency health.",
-        ]
+    immediate_mitigation = [
+        f"Inspect active processes and database locks associated with '{top_clean_name}'.",
+        "Restart or cycle hung connection pools and worker threads in affected services.",
+        "Check system resource utilization (CPU, memory, connection limits) to clear bottlenecks.",
+    ]
 
-    # 6. Section: How certain are we? (Analysis confidence & uncertainty)
-    how_certain_are_we = {
-        "badge": "Strongest candidate, not confirmed",
-        "explanation": "Our analysis identifies the most likely explanation from available logs. Further investigation is needed to confirm the actual cause.",
-    }
+    prevention_plan = [
+        "Enforce strict query and transaction timeouts to fail fast rather than stalling connection pools.",
+        "Implement circuit breakers and bulkheads between upstream clients and downstream databases.",
+        "Optimize locking order and resource allocation to permanently eliminate lock contention.",
+    ]
 
-    # Potential impact for user-facing awareness
-    if any(k in t_lower for k in ["session", "timed out", "timeout"]):
-        potential_impact = "Users may experience session interruptions, sudden logouts, or failed request authentications."
-    elif any(k in t_lower for k in ["connection", "socket", "network", "broken pipe", "pool"]):
-        potential_impact = "Users may experience connection timeouts, failed transactions, or transient request drops."
-    else:
-        potential_impact = "Users may experience degraded response times or intermittent error messages."
+    propagation_timeline = [
+        f"[{started_at.strftime('%H:%M:%S') if started_at else '10:00:00'}] Initial failure detected in primary cluster: '{top_clean_name}'",
+        "Subsequent cascading errors observed in downstream service dependencies.",
+        "System reached peak error rate during the disturbance window.",
+    ]
 
-    # Unfamiliar log patterns explained in simple language
-    unfamiliar_patterns = []
-    unfamiliar_patterns.append(explain_technical_log_pattern(top_template))
-    for c in candidates[1:3]:
-        c_tmpl = c.get("template")
-        if c_tmpl and c_tmpl != top_template:
-            unfamiliar_patterns.append(explain_technical_log_pattern(c_tmpl))
+    what_should_i_do = list(immediate_mitigation)
+    potential_impact = "Users may experience transaction failures, elevated latency, or HTTP 504 Gateway Timeouts during the disruption window."
 
-    metrics = {
-        "affectedPatterns": affected_patterns_count,
-        "detectionWindow": "10 min",
-        "totalMatchingErrors": total_matching_errors,
-        "candidateCount": len(candidates),
-    }
-
-    # Technical evidence package for developers (math, Z-scores, 15-point RCA)
+    # Structured technical evidence
     technical_evidence = {
         "primaryTemplate": top_template,
         "totalScore": top_score,
@@ -288,117 +282,157 @@ def generate_incident_summary(
             }
             for c in candidates[:4]
         ],
-        "rawSamples": raw_samples,
+        "rawSamples": primary_log_lines[:5],
     }
 
-    # Optional LLM Enhancement via Gemini with strict plain-English translation instructions
+    metrics = {
+        "affectedPatterns": affected_patterns_count,
+        "detectionWindow": "10 min",
+        "totalMatchingErrors": total_matching_errors,
+        "candidateCount": len(candidates),
+    }
+
+    # Gemini AI Problem-Solving RCA Enhancement with real log context
     llm_api_key = os.getenv("GEMINI_API_KEY")
-    used_model = model_name or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    if used_model in ("gemini-3.5-flash-lite", "gemini-3.5", "gemini-2.5-flash", "default"):
-        used_model = "gemini-1.5-flash"
+    active_model = "deterministic"
 
     if llm_api_key:
-        try:
-            prompt = f"""You are an AI Incident Assistant explaining an application issue to a general user who wants plain-English answers, NOT technical jargon.
+        candidates_text = "\n".join([
+            f"Rank #{c.get('rank', idx+1)} ({'ROOT CAUSE (X)' if c.get('rank', idx+1) == 1 else 'SYMPTOM (Y)'}): {c.get('template')} (Score: {c.get('totalScore')}/15)"
+            for idx, c in enumerate(candidates[:4])
+        ])
 
-Evidence from logs:
-- Primary Root Cause Candidate: {top_template}
-- Subsystem: {component_name}
-- Total Error Count: {total_matching_errors} in a 10-minute window (spiked significantly from normal baseline)
-- Secondary Affected Patterns: {secondary_pattern_names[:3]}
-- Temporal Order: Primary pattern started before other errors appeared
+        timeline_context = "\n".join(timeline_lines) if timeline_lines else "No chronological timeline available."
+        primary_context = "\n".join(primary_log_lines) if primary_log_lines else f"Pattern: {top_template}"
 
-Translate this technical data into a user-friendly incident explanation with EXACTLY these 6 sections in JSON:
-1. "friendlyTitle": Clear non-technical title (e.g. "Possible database connectivity problem")
-2. "whatHappened": 2 simple sentences in plain language (e.g. "Your application started experiencing an unusually high number of database connection failures. Other errors also increased around the same time.")
-3. "whatMightBeCausingIt": 1 sentence identifying the possible underlying cause in simple terms (e.g. "Our analysis suggests that database connectivity could be the main source of the problem.")
-4. "whyDoWeThinkThis": Array of 3 plain-English bullet points:
-   - "{component_name} errors appeared before the other abnormal patterns."
-   - "These errors increased significantly compared with normal activity."
-   - "Other application errors appeared shortly afterward."
-5. "whatElseWasAffected": 1-2 simple sentences explaining what other application parts or patterns were impacted.
-6. "whatShouldIDo": Array of 4 clear, actionable numbered steps (e.g. "Check whether your database is running.", "Check database connection limits.", "Review connection timeout settings.", "Investigate database logs around the incident time.")
-7. "potentialImpact": 1 sentence describing user impact (e.g. "Users may experience session interruptions or failed requests.")
+        prompt = f"""You are a Principal Site Reliability Engineer and Systems Architect diagnosing a cloud production incident.
+Analyze the following real log context, chronological timeline, and root cause candidates to produce a definitive, evidence-backed Incident Root Cause Analysis (RCA).
 
-Translation rules:
-- "Statistical frequency spike" -> "Errors occurred much more frequently than usual"
-- "Temporal precedence" -> "This error appeared before the other errors"
-- "Cascading relationship" -> "Other errors appeared shortly afterward"
-- "Root cause candidate" -> "Possible underlying cause"
-- "Baseline deviation" -> "Difference from normal application behaviour"
+--- CHRONOLOGICAL LOG TIMELINE (Incident Window) ---
+{timeline_context}
 
-Output pure JSON only."""
+--- PRIMARY ROOT CAUSE LOGS (Cluster: {top_template}) ---
+{primary_context}
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{used_model}:generateContent?key={llm_api_key}"
+--- ROOT CAUSE CANDIDATES (Deterministic 15-Point Multi-Factor Scoring) ---
+{candidates_text}
+
+Task:
+Produce a detailed, problem-solving engineering Root Cause Analysis in pure JSON with EXACTLY these fields:
+{{
+  "friendlyTitle": "Crisp technical incident title (e.g. 'Database Deadlocks on Inventory Locks Leading to Connection Pool Exhaustion')",
+  "whatHappened": "Executive summary of the outage and blast radius citing affected services and error types",
+  "whatMightBeCausingIt": "Definitive statement identifying Candidate #1 as the root cause",
+  "whyThisRootCause": "Deep technical explanation of why Candidate #1 is the true initiating root cause (X) and why Candidates #2, #3, and #4 (Y) are downstream symptoms/consequences. Cite exact timestamps, services, and trace IDs from the raw logs to prove causal direction.",
+  "propagationTimeline": ["Step 1 with timestamp and service", "Step 2", "Step 3"],
+  "immediateMitigation": ["Actionable step 1 for on-call engineer", "Actionable step 2", "Actionable step 3"],
+  "preventionPlan": ["Long-term architectural fix 1", "Fix 2", "Fix 3"],
+  "whyDoWeThinkThis": ["Key evidence bullet 1 citing log lines", "Key evidence bullet 2", "Key evidence bullet 3", "Key evidence bullet 4"],
+  "whatElseWasAffected": "1-2 sentences on impacted microservices and downstream effects.",
+  "whatShouldIDo": ["Step 1", "Step 2", "Step 3", "Step 4"],
+  "potentialImpact": "1 sentence describing user and business impact."
+}}
+
+Output pure JSON only. Do not wrap in markdown or backticks."""
+
+        # Candidate models that are verified and active on Gemini v1beta
+        models_to_try = []
+        if model_name:
+            models_to_try.append(model_name)
+        models_to_try.extend(["gemini-flash-lite-latest", "gemini-flash-latest"])
+
+        for cand_model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_model}:generateContent?key={llm_api_key}"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
-            with httpx.Client(timeout=2.5) as client:
-                res = client.post(url, json=payload)
-                if res.status_code == 200:
-                    raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if raw_text.startswith("```json"):
-                        raw_text = raw_text[7:]
-                    if raw_text.endswith("```"):
-                        raw_text = raw_text[:-3]
-                    parsed_llm = json.loads(raw_text.strip())
+            try:
+                with httpx.Client(timeout=15.0) as client:
+                    res = client.post(url, json=payload)
+                    if res.status_code == 200:
+                        raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        if raw_text.startswith("```json"):
+                            raw_text = raw_text[7:]
+                        if raw_text.startswith("```"):
+                            raw_text = raw_text[3:]
+                        if raw_text.endswith("```"):
+                            raw_text = raw_text[:-3]
+                        parsed_llm = json.loads(raw_text.strip())
 
-                    if "friendlyTitle" in parsed_llm:
-                        friendly_title = parsed_llm.get("friendlyTitle", friendly_title)
-                    if "whatHappened" in parsed_llm:
-                        what_happened = parsed_llm.get("whatHappened", what_happened)
-                    if "whatMightBeCausingIt" in parsed_llm:
-                        what_might_be_causing_it = parsed_llm.get("whatMightBeCausingIt", what_might_be_causing_it)
-                    if "whyDoWeThinkThis" in parsed_llm and isinstance(parsed_llm["whyDoWeThinkThis"], list):
-                        why_do_we_think_this = parsed_llm["whyDoWeThinkThis"]
-                    if "whatElseWasAffected" in parsed_llm:
-                        what_else_was_affected = parsed_llm.get("whatElseWasAffected", what_else_was_affected)
-                    if "whatShouldIDo" in parsed_llm and isinstance(parsed_llm["whatShouldIDo"], list):
-                        what_should_i_do = parsed_llm["whatShouldIDo"]
-                    if "potentialImpact" in parsed_llm:
-                        potential_impact = parsed_llm.get("potentialImpact", potential_impact)
-        except Exception as e:
-            logger.info(f"Using deterministic human synthesis ({e})")
+                        if parsed_llm.get("friendlyTitle"):
+                            friendly_title = parsed_llm["friendlyTitle"]
+                        if parsed_llm.get("whatHappened"):
+                            what_happened = parsed_llm["whatHappened"]
+                        if parsed_llm.get("whatMightBeCausingIt"):
+                            what_might_be_causing_it = parsed_llm["whatMightBeCausingIt"]
+                        if parsed_llm.get("whyThisRootCause"):
+                            why_this_root_cause = parsed_llm["whyThisRootCause"]
+                        if parsed_llm.get("whyDoWeThinkThis") and isinstance(parsed_llm["whyDoWeThinkThis"], list):
+                            why_do_we_think_this = parsed_llm["whyDoWeThinkThis"]
+                        if parsed_llm.get("propagationTimeline") and isinstance(parsed_llm["propagationTimeline"], list):
+                            propagation_timeline = parsed_llm["propagationTimeline"]
+                        if parsed_llm.get("immediateMitigation") and isinstance(parsed_llm["immediateMitigation"], list):
+                            immediate_mitigation = parsed_llm["immediateMitigation"]
+                            what_should_i_do = list(immediate_mitigation)
+                        if parsed_llm.get("preventionPlan") and isinstance(parsed_llm["preventionPlan"], list):
+                            prevention_plan = parsed_llm["preventionPlan"]
+                        if parsed_llm.get("whatElseWasAffected"):
+                            what_else_was_affected = parsed_llm["whatElseWasAffected"]
+                        if parsed_llm.get("potentialImpact"):
+                            potential_impact = parsed_llm["potentialImpact"]
 
-    # Complete structured report containing user-friendly sections + technical evidence
+                        active_model = cand_model
+                        logger.info(f"Successfully generated Gemini RCA using model {cand_model} for incident {incident_id}")
+                        break
+                    else:
+                        logger.warn(f"Gemini model {cand_model} returned HTTP {res.status_code}: {res.text[:120]}")
+            except Exception as e:
+                logger.warn(f"Gemini call error with model {cand_model}: {e}")
+
+    # Structured report for UI and persistence
     structured_report = {
         "friendlyTitle": friendly_title,
         "whatHappened": what_happened,
         "whatMightBeCausingIt": what_might_be_causing_it,
+        "whyThisRootCause": why_this_root_cause,
+        "propagationTimeline": propagation_timeline,
+        "immediateMitigation": immediate_mitigation,
+        "preventionPlan": prevention_plan,
         "whyDoWeThinkThis": why_do_we_think_this,
         "whatElseWasAffected": what_else_was_affected,
         "whatShouldIDo": what_should_i_do,
-        "howCertainAreWe": how_certain_are_we,
         "potentialImpact": potential_impact,
-        "unfamiliarPatterns": unfamiliar_patterns,
         "metrics": metrics,
         "technicalEvidence": technical_evidence,
     }
 
-    # Format human-readable markdown summary adhering to the 6-section structure
+    # Markdown summary representation
     why_md = "\n".join(f"- {b}" for b in why_do_we_think_this)
-    steps_md = "\n".join(f"{idx+1}. {step}" for idx, step in enumerate(what_should_i_do))
+    mitigation_md = "\n".join(f"{idx+1}. {step}" for idx, step in enumerate(immediate_mitigation))
+    prevention_md = "\n".join(f"{idx+1}. {step}" for idx, step in enumerate(prevention_plan))
 
-    summary_text = f"""### Incident analysis
+    summary_text = f"""### Incident Root Cause Analysis
 **{friendly_title}**
 
 #### What happened?
 {what_happened}
 
-#### What might be causing it?
+#### Identified Root Cause
 {what_might_be_causing_it}
 
-#### Why do we think this?
+#### Root Cause Mechanism & Causal Proof (X vs Y)
+{why_this_root_cause}
+
+#### Evidence from Logs
 {why_md}
 
-#### What else was affected?
+#### Cascading Effects & Impacted Components
 {what_else_was_affected}
 
-#### What should you do?
-{steps_md}
+#### Immediate Remediation Procedures
+{mitigation_md}
 
-#### Analysis confidence
-**{how_certain_are_we['badge']}**  
-{how_certain_are_we['explanation']}
+#### Permanent Prevention Plan
+{prevention_md}
 """
 
     summary_id = str(uuid.uuid4())
@@ -422,7 +456,7 @@ Output pure JSON only."""
             "inc_id": incident_id,
             "summary": summary_text,
             "rec": json.dumps(structured_report),
-            "model": used_model,
+            "model": active_model,
         }
     )
     db.commit()
@@ -432,5 +466,5 @@ Output pure JSON only."""
         "incidentId": incident_id,
         "summary": summary_text,
         "structuredReport": structured_report,
-        "model": used_model,
+        "model": active_model,
     }
