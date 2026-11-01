@@ -1,4 +1,4 @@
-import { Incident, IncidentStatus, SeverityLevel } from '../types';
+import { Incident, IncidentStatus, SeverityLevel, SimilarIncident } from '../types';
 import { apiClient } from './api/client';
 import { normalizeLogTemplate } from '../utils/template-normalizer';
 
@@ -144,6 +144,8 @@ export const incidentService = {
           shortDescription: norm.shortDescription,
           severity: (item.severity.toLowerCase() as SeverityLevel) || 'high',
           status: item.status as IncidentStatus,
+          resolutionNotes: item.resolutionNotes || null,
+          resolvedAt: item.resolvedAt ? new Date(item.resolvedAt).toISOString() : null,
           suspectedRootCauseTemplate: suspectedTemplate || 'Evaluating pattern',
           firstDetected: new Date(item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
           lastUpdated: new Date(item.updatedAt || item.startedAt).toISOString().slice(0, 19).replace('T', ' ') + ' UTC',
@@ -186,17 +188,43 @@ export const incidentService = {
     return null;
   },
 
-  async updateStatus(projectId: string, incidentId: string, status: IncidentStatus): Promise<boolean> {
+  async updateStatus(
+    projectId: string,
+    incidentId: string,
+    status: IncidentStatus,
+    resolutionNotes?: string | null,
+  ): Promise<boolean> {
     try {
       await apiClient.fetchEndpoint(`/incidents/${projectId}/${incidentId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, resolutionNotes }),
       });
       return true;
     } catch (err) {
       console.error(`Failed to update status for incident ${incidentId}:`, err);
       return false;
     }
+  },
+
+  async getSimilarIncidents(projectId: string, incidentId: string): Promise<SimilarIncident[]> {
+    if (!apiClient.isBackendConnected || !projectId || !incidentId) {
+      return [];
+    }
+
+    try {
+      const res = await apiClient.fetchEndpoint<{
+        similarIncidents: SimilarIncident[];
+        total: number;
+      }>(`/incidents/${projectId}/${incidentId}/similar`);
+
+      if (res?.similarIncidents && Array.isArray(res.similarIncidents)) {
+        return res.similarIncidents;
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch similar incidents for ${incidentId}:`, err);
+    }
+
+    return [];
   },
 
   async chatWithCopilot(

@@ -25,6 +25,8 @@ import {
   Check,
   X,
   ArrowRight,
+  ShieldCheck,
+  Edit3,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -35,6 +37,8 @@ import { logService } from '../../services/log-service';
 import { useProject } from '../../context/ProjectContext';
 import { normalizeLogTemplate } from '../../utils/template-normalizer';
 import { RcaCopilotDrawer } from './components/RcaCopilotDrawer';
+import { ResolveIncidentModal } from './components/ResolveIncidentModal';
+import { SimilarIncidentsSection } from './components/SimilarIncidentsSection';
 
 export const IncidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -48,6 +52,7 @@ export const IncidentDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'rca' | 'timeline' | 'action_plan'>('rca');
   const [showTechEvidence, setShowTechEvidence] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
 
   // Matching errors modal state
   const [matchingLogsOpen, setMatchingLogsOpen] = useState(false);
@@ -79,6 +84,26 @@ export const IncidentDetailPage: React.FC = () => {
         setIncident({ ...incident, status: newStatus });
         setStatusMessage(`Incident transitioned to ${newStatus}.`);
         setTimeout(() => setStatusMessage(null), 3000);
+      }
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const handleConfirmResolve = async (notes: string) => {
+    if (!incident || !activeProjectId) return;
+    setStatusUpdating(true);
+    try {
+      const ok = await incidentService.updateStatus(activeProjectId, incident.id, 'RESOLVED', notes);
+      if (ok) {
+        setIncident({
+          ...incident,
+          status: 'RESOLVED',
+          resolutionNotes: notes,
+          resolvedAt: new Date().toISOString(),
+        });
+        setStatusMessage('Incident successfully resolved and verified post-mortem indexed.');
+        setTimeout(() => setStatusMessage(null), 4000);
       }
     } finally {
       setStatusUpdating(false);
@@ -297,25 +322,58 @@ export const IncidentDetailPage: React.FC = () => {
               <button
                 type="button"
                 disabled={statusUpdating}
-                onClick={() => handleStatusChange('RESOLVED')}
+                onClick={() => setResolveModalOpen(true)}
                 className="px-3 py-1 rounded-full text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-3 h-3" />
                 <span>Mark Resolved</span>
               </button>
             ) : (
-              <button
-                type="button"
-                disabled={statusUpdating}
-                onClick={() => handleStatusChange('OPEN')}
-                className="px-3 py-1 rounded-full text-xs font-medium border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reopen</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={statusUpdating}
+                  onClick={() => setResolveModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors cursor-pointer inline-flex items-center gap-1"
+                >
+                  <Edit3 className="w-3 h-3" />
+                  <span>Edit Resolution</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={statusUpdating}
+                  onClick={() => handleStatusChange('OPEN')}
+                  className="px-3 py-1 rounded-full text-xs font-medium border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reopen</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
+
+        {/* Verified Resolution Banner (Shown when resolved) */}
+        {incident.status === 'RESOLVED' && (
+          <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Verified Post-Mortem & Engineer Resolution</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResolveModalOpen(true)}
+                className="text-[11px] text-emerald-700 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 font-medium cursor-pointer"
+              >
+                <Edit3 className="w-3 h-3" /> Edit Post-Mortem
+              </button>
+            </div>
+            <p className="text-xs font-mono text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap leading-relaxed">
+              {incident.resolutionNotes || 'Incident marked as resolved. Click "Edit Post-Mortem" above to record verified resolution steps.'}
+            </p>
+          </div>
+        )}
 
         {/* Summary Metric Cards (Total matching errors with link + Root cause candidates) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
@@ -469,7 +527,7 @@ export const IncidentDetailPage: React.FC = () => {
         {/* Why this is the root cause */}
         <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-850/70 border border-neutral-200 dark:border-neutral-800 space-y-3">
           <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider block">
-            Why this is the root cause 
+            Why this is the root cause  
           </span>
           <ul className="space-y-2 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300">
             {whyDoWeThinkThis.map((bullet, idx) => (
@@ -935,6 +993,11 @@ export const IncidentDetailPage: React.FC = () => {
                 </Card>
               )}
             </div>
+
+            {/* Cross-Microservice Similar Past Incidents */}
+            {activeProjectId && incident && (
+              <SimilarIncidentsSection projectId={activeProjectId} incidentId={incident.id} />
+            )}
           </div>
         )}
       </div>
@@ -1084,6 +1147,16 @@ export const IncidentDetailPage: React.FC = () => {
           Chat
         </span>
       </button>
+
+      {/* Resolve Incident Modal */}
+      {resolveModalOpen && incident && (
+        <ResolveIncidentModal
+          isOpen={resolveModalOpen}
+          onClose={() => setResolveModalOpen(false)}
+          incident={incident}
+          onConfirm={handleConfirmResolve}
+        />
+      )}
 
       {/* RCA War Room Copilot Drawer */}
       {activeProjectId && (

@@ -18,6 +18,7 @@ export const listIncidentsQuerySchema = z.object({
 
 export const updateIncidentStatusSchema = z.object({
   status: z.enum(["OPEN", "INVESTIGATING", "RESOLVED"]),
+  resolutionNotes: z.string().max(10000).optional().nullable(),
 });
 
 export const incidentChatSchema = z.object({

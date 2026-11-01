@@ -205,6 +205,8 @@ export interface Incident {
   shortDescription?: string;
   severity: SeverityLevel;
   status: IncidentStatus;
+  resolutionNotes?: string | null;
+  resolvedAt?: string | null;
   suspectedRootCauseTemplate?: string;
   suspectedRootCauseService?: string;
   affectedServices?: string[];
@@ -221,6 +223,23 @@ export interface Incident {
     completed: boolean;
     category?: string;
   }>;
+}
+
+export interface SimilarIncident {
+  id: string;
+  title: string;
+  severity: string;
+  status: IncidentStatus;
+  startedAt: string;
+  resolvedAt: string | null;
+  projectId: string;
+  projectName: string;
+  isCrossService: boolean;
+  similarityScore: number;
+  similarityReasons: string[];
+  rootCauseTemplate: string;
+  resolutionNotes: string | null;
+  recommendedRemediation: string | null;
 }
 
 export interface DashboardMetrics {

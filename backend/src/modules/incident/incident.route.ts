@@ -34,6 +34,13 @@ router.get(
   incidentController.getIncidentById,
 );
 
+// GET /api/v1/incidents/:projectId/:incidentId/similar
+router.get(
+  "/:projectId/:incidentId/similar",
+  validateParams(incidentIdParamSchema),
+  incidentController.getSimilarIncidents,
+);
+
 // PATCH /api/v1/incidents/:projectId/:incidentId/status
 router.patch(
   "/:projectId/:incidentId/status",

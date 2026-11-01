@@ -51,6 +51,23 @@ export class IncidentController {
     sendResponse(res, StatusCodes.OK, "Incident status updated successfully", { incident: result });
   });
 
+  getSimilarIncidents = CatchAsync(async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, "User authentication required");
+    }
+
+    const projectId = req.params.projectId as string;
+    const incidentId = req.params.incidentId as string;
+
+    const results = await incidentService.getSimilarPastIncidents(projectId, incidentId, userId);
+
+    sendResponse(res, StatusCodes.OK, "Similar past incidents retrieved successfully", {
+      similarIncidents: results,
+      total: results.length,
+    });
+  });
+
   chatWithCopilot = CatchAsync(async (req: Request, res: Response) => {
     const userId = req.user?.id;
     if (!userId) {

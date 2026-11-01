@@ -170,12 +170,17 @@ export class IncidentService {
       throw new ApiError(StatusCodes.NOT_FOUND, "Incident not found");
     }
 
+    const updateData: any = {
+      status: body.status,
+      resolvedAt: body.status === "RESOLVED" ? (incident.resolvedAt || new Date()) : null,
+    };
+    if (body.resolutionNotes !== undefined) {
+      updateData.resolutionNotes = body.resolutionNotes;
+    }
+
     const updated = await prisma.incident.update({
       where: { id: incidentId },
-      data: {
-        status: body.status,
-        resolvedAt: body.status === "RESOLVED" ? new Date() : null,
-      },
+      data: updateData,
     });
 
     // Invalidate caches immediately
@@ -183,6 +188,179 @@ export class IncidentService {
     memoryCache.delete(`incident_detail:${projectId}:${incidentId}`);
 
     return updated;
+  }
+
+  /**
+   * Cross-Microservice Similar Incidents Search:
+   * Searches across all microservices (projects) within the same organization
+   * to find historical incidents matching the current root cause, Drain3 template,
+   * failure domain, and error signatures. Surfaces verified developer resolutions.
+   */
+  async getSimilarPastIncidents(projectId: string, incidentId: string, userId: string) {
+    const currentProject = await this.validateProjectOwnership(projectId, userId);
+    const orgId = currentProject.organizationId;
+
+    const currentIncident = await prisma.incident.findFirst({
+      where: { id: incidentId, projectId },
+      include: {
+        project: { select: { id: true, name: true, organizationId: true } },
+        rcaAnalyses: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: {
+            candidates: {
+              orderBy: { rank: "asc" },
+              take: 3,
+              include: { cluster: { select: { id: true, template: true } } },
+            },
+          },
+        },
+        incidentSummaries: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+
+    if (!currentIncident) {
+      throw new ApiError(StatusCodes.NOT_FOUND, "Current incident not found");
+    }
+
+    // Helper to tokenize and normalize text (strips <*> wildcards, punctuation, short words)
+    const tokenize = (textStr: string): Set<string> => {
+      if (!textStr) return new Set();
+      const clean = textStr
+        .replace(/<[*]>/g, " ")
+        .replace(/[^a-zA-Z0-9_\-\s]/g, " ")
+        .toLowerCase();
+      const tokens = clean
+        .split(/\s+/)
+        .filter((t) => t.length > 2 && !["the", "and", "for", "with", "from", "that", "this", "are", "was"].includes(t));
+      return new Set(tokens);
+    };
+
+    const currentTemplate = currentIncident.rcaAnalyses?.[0]?.candidates?.[0]?.cluster?.template || "";
+    const currentCandidates = currentIncident.rcaAnalyses?.[0]?.candidates || [];
+    const currentTokens = tokenize(
+      `${currentIncident.title} ${currentTemplate} ${currentCandidates.map((c) => c.cluster?.template || "").join(" ")}`
+    );
+
+    // Fetch all historical incidents in the same organization (excluding current incident)
+    const orgIncidents = await prisma.incident.findMany({
+      where: {
+        project: { organizationId: orgId },
+        id: { not: incidentId },
+      },
+      include: {
+        project: { select: { id: true, name: true } },
+        rcaAnalyses: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: {
+            candidates: {
+              orderBy: { rank: "asc" },
+              take: 3,
+              include: { cluster: { select: { id: true, template: true } } },
+            },
+          },
+        },
+        incidentSummaries: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: { startedAt: "desc" },
+      take: 25,
+    });
+
+    // Score each historical incident
+    const scoredMatches = orgIncidents.map((past) => {
+      const isCrossService = past.projectId !== projectId;
+      const pastTemplate = past.rcaAnalyses?.[0]?.candidates?.[0]?.cluster?.template || "";
+      const pastCandidates = past.rcaAnalyses?.[0]?.candidates || [];
+      const pastTokens = tokenize(
+        `${past.title} ${pastTemplate} ${pastCandidates.map((c) => c.cluster?.template || "").join(" ")}`
+      );
+
+      // 1. Template Jaccard Similarity (Weight: 45)
+      let templateScore = 0;
+      if (currentTemplate && pastTemplate) {
+        const curTplTokens = tokenize(currentTemplate);
+        const pastTplTokens = tokenize(pastTemplate);
+        const intersection = [...curTplTokens].filter((t) => pastTplTokens.has(t));
+        const union = new Set([...curTplTokens, ...pastTplTokens]);
+        if (union.size > 0) {
+          templateScore = (intersection.length / union.size) * 45;
+        }
+      }
+
+      // 2. Title & Error Token Overlap (Weight: 30)
+      const sharedTokens = [...currentTokens].filter((t) => pastTokens.has(t));
+      const tokenScore = Math.min(30, sharedTokens.length * 6);
+
+      // 3. High-Priority Infrastructure Keywords Match (Weight: 15)
+      const infraKeywords = ["deadlock", "lock", "pool", "exhausted", "timeout", "socket", "closed", "ssl", "tls", "handshake", "refused", "reset", "redis", "postgres", "oom", "memory"];
+      const sharedInfra = infraKeywords.filter((k) => currentTokens.has(k) && pastTokens.has(k));
+      const infraScore = Math.min(15, sharedInfra.length * 5);
+
+      // 4. Severity Tier Match (Weight: 10)
+      const severityScore = past.severity === currentIncident.severity ? 10 : 0;
+
+      const rawScore = Math.round(templateScore + tokenScore + infraScore + severityScore);
+      const similarityScore = Math.min(99, Math.max(15, rawScore));
+
+      // Generate human-readable similarity explanation reasons
+      const similarityReasons: string[] = [];
+      if (sharedInfra.length > 0) {
+        similarityReasons.push(`Shared failure domain: ${sharedInfra.slice(0, 3).join(", ")}`);
+      }
+      if (templateScore > 15) {
+        similarityReasons.push("High Drain3 template clustering match");
+      }
+      if (sharedTokens.length > 2) {
+        similarityReasons.push(`Matching error signatures (${sharedTokens.slice(0, 3).join(", ")})`);
+      }
+      if (past.severity === currentIncident.severity) {
+        similarityReasons.push(`Matching severity level (${past.severity})`);
+      }
+      if (isCrossService) {
+        similarityReasons.push(`Cross-microservice occurrence from ${past.project.name}`);
+      }
+
+      // Extract remediation info
+      const latestSummary = past.incidentSummaries?.[0];
+      const rec = (latestSummary?.recommendations as any) || {};
+      const recommendedRemediation = rec.immediateRemediationSteps || rec.whatMightBeCausingIt || latestSummary?.summary || null;
+
+      return {
+        id: past.id,
+        title: past.title,
+        severity: past.severity,
+        status: past.status,
+        startedAt: past.startedAt,
+        resolvedAt: past.resolvedAt,
+        projectId: past.projectId,
+        projectName: past.project.name,
+        isCrossService,
+        similarityScore,
+        similarityReasons,
+        rootCauseTemplate: pastTemplate || "Under investigation",
+        resolutionNotes: past.resolutionNotes || null,
+        recommendedRemediation,
+      };
+    });
+
+    // Sort: highest similarity first; prioritize verified notes
+    scoredMatches.sort((a, b) => {
+      if (b.similarityScore !== a.similarityScore) {
+        return b.similarityScore - a.similarityScore;
+      }
+      if (b.resolutionNotes && !a.resolutionNotes) return 1;
+      if (!b.resolutionNotes && a.resolutionNotes) return -1;
+      return 0;
+    });
+
+    return scoredMatches;
   }
 
   /**

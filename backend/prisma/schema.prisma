@@ -193,14 +193,15 @@ model Anomaly {
 }
 
 model Incident {
-  id          String    @id @default(uuid())
-  projectId   String
-  title       String
-  description String?   @db.Text
-  severity    String
-  status      String
-  startedAt   DateTime  @default(now())
-  resolvedAt  DateTime?
+  id              String    @id @default(uuid())
+  projectId       String
+  title           String
+  description     String?   @db.Text
+  severity        String
+  status          String
+  resolutionNotes String?   @db.Text
+  startedAt       DateTime  @default(now())
+  resolvedAt      DateTime?
 
   project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   incidentAnomalies IncidentAnomaly[]
