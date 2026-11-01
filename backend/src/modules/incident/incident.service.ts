@@ -315,7 +315,7 @@ export class IncidentService {
         similarityReasons.push(`Shared failure domain: ${sharedInfra.slice(0, 3).join(", ")}`);
       }
       if (templateScore > 15) {
-        similarityReasons.push("High Drain3 template clustering match");
+        similarityReasons.push("High error pattern signature match");
       }
       if (sharedTokens.length > 2) {
         similarityReasons.push(`Matching error signatures (${sharedTokens.slice(0, 3).join(", ")})`);

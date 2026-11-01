@@ -76,12 +76,9 @@ export const SimilarIncidentsSection: React.FC<SimilarIncidentsSectionProps> = (
             <div>
               <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                 Similar Historical Incidents Across Organization
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold uppercase">
-                  Bonus Feature
-                </span>
               </h3>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Drain3 pattern match & cross-microservice verified resolution reuse
+                Structural failure pattern matching & cross-microservice resolution reuse
               </p>
             </div>
           </div>
@@ -90,7 +87,7 @@ export const SimilarIncidentsSection: React.FC<SimilarIncidentsSectionProps> = (
         <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
           <Layers className="w-3.5 h-3.5 text-neutral-400" />
           <span>
-            {loading ? 'Scanning org...' : `${similarIncidents.length} related failure pattern${similarIncidents.length === 1 ? '' : 's'}`}
+            {loading ? 'Scanning organization...' : `${similarIncidents.length} related failure pattern${similarIncidents.length === 1 ? '' : 's'}`}
           </span>
         </div>
       </div>
@@ -100,7 +97,7 @@ export const SimilarIncidentsSection: React.FC<SimilarIncidentsSectionProps> = (
         <div className="py-8 text-center space-y-3">
           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-            Scanning peer microservices in your organization for matching Drain3 templates...
+            Scanning peer microservices in your organization for matching failure patterns...
           </p>
         </div>
       )}
@@ -209,10 +206,10 @@ export const SimilarIncidentsSection: React.FC<SimilarIncidentsSectionProps> = (
                 {/* Collapsible Details */}
                 {isExpanded && (
                   <div className="p-4 border-t border-neutral-100 dark:border-neutral-800 space-y-4 text-xs">
-                    {/* Root Cause Drain3 Template */}
+                    {/* Root Cause Pattern Signature */}
                     <div className="space-y-1">
                       <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider font-mono">
-                        Historical Root Cause Template (Drain3)
+                        Historical Root Cause Pattern Signature
                       </span>
                       <div className="p-2.5 rounded-lg bg-neutral-100 dark:bg-neutral-900 font-mono text-[11px] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-800 break-words">
                         {past.rootCauseTemplate}

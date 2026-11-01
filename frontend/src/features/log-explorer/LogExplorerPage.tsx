@@ -98,7 +98,7 @@ export const LogExplorerPage: React.FC = () => {
             Log Stream & Ingestion Explorer
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Query normalized log events, inspect Drain3 cluster patterns, and upload new log datasets.
+            Query normalized log events, inspect recurring error patterns, and upload new log datasets.
           </p>
         </div>
 
@@ -130,7 +130,7 @@ export const LogExplorerPage: React.FC = () => {
           {/* Keyword / Pattern Search */}
           <div className="sm:col-span-8">
             <Input
-              placeholder="Search message text, Drain3 pattern, or log ID..."
+              placeholder="Search message text, log pattern, or ID..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -272,7 +272,7 @@ export const LogExplorerPage: React.FC = () => {
                             {log.clusterTemplate && (
                               <div>
                                 <span className="text-xs font-medium text-neutral-400 block mb-1">
-                                  Drain3 Template:
+                                  Log Pattern Signature:
                                 </span>
                                 <div className="p-2.5 rounded-lg bg-neutral-100 dark:bg-neutral-850 font-mono text-xs text-neutral-800 dark:text-neutral-200">
                                   {log.clusterTemplate}

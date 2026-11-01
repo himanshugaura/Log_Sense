@@ -96,7 +96,7 @@ export const LogClustersPage: React.FC = () => {
             Log Template Clusters
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Automated Drain3 clustering parses recurring log lines into reusable structured patterns with wildcard tokens.
+            Automated pattern mining groups recurring log lines into reusable structured signatures with variable parameters.
           </p>
         </div>
 

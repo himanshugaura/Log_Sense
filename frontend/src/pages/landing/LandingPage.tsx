@@ -119,8 +119,8 @@ export const LandingPage: React.FC = () => {
       a: 'Log parsing strips variable parameters (such as IP addresses, transaction UUIDs, user IDs, and timestamps) from log messages, replacing them with wildcard tokens (<*>) to discover the underlying constant template executed by the code.',
     },
     {
-      q: 'What is Drain3?',
-      a: 'Drain3 is a state-of-the-art online log parser that uses a fixed-depth parse tree to extract message templates in near linear time. LogSense models its clustering and template induction on Drain3 specifications.',
+      q: 'How does log pattern clustering work?',
+      a: 'LogSense uses online log parsing with parse trees to extract structural message templates in near-linear time, grouping millions of recurring log lines into identifiable failure signatures.',
     },
     {
       q: 'How does anomaly detection work?',
@@ -140,7 +140,7 @@ export const LandingPage: React.FC = () => {
     },
     {
       q: 'Can I connect my own backend?',
-      a: 'Yes. LogSense frontend is built with a typed API client abstraction (`apiClient`). Pointing `VITE_API_BASE_URL` to a Python (FastAPI/Drain3) or Node.js server seamlessly switches data from preview fixtures to live production endpoints.',
+      a: 'Yes. LogSense frontend is built with a typed API client abstraction (`apiClient`). Pointing `VITE_API_BASE_URL` to a Python (FastAPI) or Node.js server seamlessly switches data from preview fixtures to live production endpoints.',
     },
   ];
 
@@ -440,7 +440,7 @@ export const LandingPage: React.FC = () => {
                             {inc.title}
                           </p>
                           <div className="mt-2 flex items-center gap-3 text-xs text-neutral-500">
-                            <span className="truncate max-w-xs">Root: {inc.suspectedRootCauseTemplate || 'Drain3 Pattern'}</span>
+                            <span className="truncate max-w-xs">Root: {inc.suspectedRootCauseTemplate || 'Log Pattern'}</span>
                             <span aria-hidden="true">·</span>
                             <span>{inc.rootCauseCandidates?.length || 1} ranked candidates</span>
                           </div>

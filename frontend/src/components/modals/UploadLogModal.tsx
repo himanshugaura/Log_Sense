@@ -180,7 +180,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
               Upload Log Dataset
             </h3>
             <p className="text-xs text-neutral-500">
-              Drain3 template clustering, statistical standard-deviation spike detection, and 15-point RCA.
+              Automated pattern extraction, statistical anomaly detection, and root cause analysis.
             </p>
           </div>
         </div>
@@ -288,7 +288,7 @@ export const UploadLogModal: React.FC<UploadLogModalProps> = ({
               <span>Log Dataset Successfully Ingested & Analyzed!</span>
             </div>
             <p className="text-xs text-neutral-600 dark:text-neutral-400">
-              Drain3 templates discovered, 5-minute baseline standard-deviation spikes evaluated, and point-based root cause analysis completed.
+              Log patterns identified, statistical anomaly baselines evaluated, and root cause analysis completed.
             </p>
             <div className="pt-2 flex items-center gap-2">
               <Button

@@ -248,7 +248,7 @@ export const OverviewPage: React.FC = () => {
               No Log File Uploaded For {serviceName}
             </h3>
             <p className="text-xs text-neutral-500 mt-1 max-w-md mx-auto">
-              Upload your service log file (.log, .txt, .csv, JSON) to trigger Drain3 template clustering, 5-minute statistical spike detection, and 15-point RCA.
+              Upload your service log file (.log, .txt, .csv, JSON) to trigger automated pattern extraction, statistical anomaly detection, and root cause analysis.
             </p>
           </div>
           <Button

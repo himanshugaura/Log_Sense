@@ -563,6 +563,13 @@ export const IncidentDetailPage: React.FC = () => {
       </Card>
 
       {/* =========================================================================
+          CROSS-MICROSERVICE HISTORICAL INCIDENTS (ALWAYS VISIBLE KNOWLEDGE BASE)
+          ========================================================================= */}
+      {activeProjectId && incident && (
+        <SimilarIncidentsSection projectId={activeProjectId} incidentId={incident.id} />
+      )}
+
+      {/* =========================================================================
           SECTION 4: EXPANDABLE TECHNICAL EVIDENCE & SCORING (FOR DEVELOPERS)
           ========================================================================= */}
       <div className="border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden bg-neutral-50/60 dark:bg-neutral-900/40">
@@ -580,7 +587,7 @@ export const IncidentDetailPage: React.FC = () => {
                 Technical Evidence & Scoring (for developers)
               </span>
               <span className="text-xs text-neutral-500">
-                Expand to view mathematical standard deviation Z-scores, 15-pt scoring breakdown, and raw Drain3 templates
+                Expand to view statistical Z-scores, 15-pt scoring breakdown, and extracted log pattern signatures
               </span>
             </div>
           </div>
@@ -618,7 +625,7 @@ export const IncidentDetailPage: React.FC = () => {
                   <thead>
                     <tr className="bg-neutral-100 dark:bg-neutral-850 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 font-semibold">
                       <th className="p-3 w-16">Rank</th>
-                      <th className="p-3 min-w-[280px]">Candidate Pattern & Drain3 Template</th>
+                      <th className="p-3 min-w-[280px]">Candidate Failure Signature & Pattern</th>
                       <th className="p-3 text-center">Total Score</th>
                       <th className="p-3 text-center">Temporal (≤4)</th>
                       <th className="p-3 text-center">Frequency (≤4)</th>
@@ -667,7 +674,7 @@ export const IncidentDetailPage: React.FC = () => {
                             </div>
                             <div className="p-2 rounded bg-neutral-100 dark:bg-neutral-850 font-mono text-[11px] text-neutral-700 dark:text-neutral-300 break-words leading-relaxed border border-neutral-200/60 dark:border-neutral-800/60">
                               <span className="text-[9px] uppercase font-bold text-neutral-400 block font-sans mb-0.5">
-                                Technical Drain3 Template:
+                                Log Pattern Signature:
                               </span>
                               {candidate.template}
                             </div>
@@ -805,7 +812,7 @@ export const IncidentDetailPage: React.FC = () => {
                             </p>
                             <div className="mt-1.5 p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-[11px] font-mono text-neutral-700 dark:text-neutral-300 break-words">
                               <span className="text-[10px] text-neutral-400 uppercase font-sans font-bold block mb-0.5">
-                                Technical Drain3 Template:
+                                Log Pattern Signature:
                               </span>
                               {candidate.template}
                             </div>
@@ -970,11 +977,6 @@ export const IncidentDetailPage: React.FC = () => {
                 </Card>
               )}
             </div>
-
-            {/* Cross-Microservice Similar Past Incidents */}
-            {activeProjectId && incident && (
-              <SimilarIncidentsSection projectId={activeProjectId} incidentId={incident.id} />
-            )}
           </div>
         )}
       </div>

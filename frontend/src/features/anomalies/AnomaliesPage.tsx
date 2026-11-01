@@ -314,7 +314,7 @@ export const AnomaliesPage: React.FC = () => {
                   </p>
 
                   <p className="text-[10px] text-neutral-400 font-mono mt-1 line-clamp-1 truncate bg-neutral-100 dark:bg-neutral-850 px-1.5 py-0.5 rounded">
-                    Drain3: {anom.clusterTemplate || anom.title}
+                    Pattern: {anom.clusterTemplate || anom.title}
                   </p>
 
                   <div className="mt-3 pt-2.5 border-t border-neutral-100 dark:border-neutral-850 flex items-center justify-between text-[11px]">
@@ -436,7 +436,7 @@ export const AnomaliesPage: React.FC = () => {
               {/* Template / Pattern Box */}
               <div>
                 <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 block mb-1.5">
-                  Drain3 Template / Log Pattern:
+                  Log Pattern Signature:
                 </span>
                 <p className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs font-mono leading-relaxed text-neutral-800 dark:text-neutral-200 break-words">
                   {activeAnomaly.clusterTemplate || activeAnomaly.description}
